@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(powershell:*)",
+      "Bash(Test-Path \"C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\logo.jpg\")",
+      "Bash(if [ -f \"C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\logo.jpg\" ])",
+      "Bash(then echo \"Logo exists\")",
+      "Bash(else echo \"Logo not found\")",
+      "Bash(fi)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

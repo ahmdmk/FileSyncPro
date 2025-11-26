@@ -1,0 +1,17 @@
+2025-11-19 15:22:38.326 [INFO] [1] FileSyncPro MVVM application started
+2025-11-19 15:23:10.705 [SUCCESS] [1] Local destination validated. Available space: 60.3 GB
+2025-11-19 15:23:12.118 [INFO] [1] Downloading from SharePoint to Local...
+2025-11-19 15:23:18.802 [ERROR] [1] Synchronization failed: Resource not found for the segment ':f:'.
+2025-11-19 15:23:18.805 [ERROR] [1] Synchronization failed
+EXCEPTION: Resource not found for the segment ':f:'.
+STACK TRACE:    at Microsoft.Kiota.Http.HttpClientLibrary.HttpClientRequestAdapter.ThrowIfFailedResponseAsync(HttpResponseMessage response, Dictionary`2 errorMapping, Activity activityForAttributes, CancellationToken cancellationToken)
+   at Microsoft.Kiota.Http.HttpClientLibrary.HttpClientRequestAdapter.SendAsync[ModelType](RequestInformation requestInfo, ParsableFactory`1 factory, Dictionary`2 errorMapping, CancellationToken cancellationToken)
+   at Microsoft.Kiota.Http.HttpClientLibrary.HttpClientRequestAdapter.SendAsync[ModelType](RequestInformation requestInfo, ParsableFactory`1 factory, Dictionary`2 errorMapping, CancellationToken cancellationToken)
+   at Microsoft.Graph.Sites.Item.SiteItemRequestBuilder.GetAsync(Action`1 requestConfiguration, CancellationToken cancellationToken)
+   at FileSyncPro.Services.SharePointSyncService.DownloadFromSharePointAsync(DestinationConfig config, String localDestinationPath, SyncProgress progress) in C:\Users\kunhamad.mk\Source\Repos\FileSyncPro\FileSyncPro\Services\SharePointSyncService.cs:line 330
+   at FileSyncPro.Services.FileSyncService.SyncFilesAsync(FileSyncOperation operation, IProgress`1 progress) in C:\Users\kunhamad.mk\Source\Repos\FileSyncPro\FileSyncPro\Services\FileSyncService.cs:line 80
+2025-11-19 16:14:43.732 [SUCCESS] [1] Local destination validated. Available space: 58.4 GB
+2025-11-19 16:14:44.740 [INFO] [1] Downloading from SharePoint to Local...
+2025-11-19 16:17:28.447 [INFO] [1] FileSyncPro application shutting down
+2025-11-19 16:50:29.847 [INFO] [1] FileSyncPro MVVM application started
+2025-11-19 16:52:47.129 [INFO] [1] FileSyncPro application shutting down

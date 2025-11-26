@@ -1,0 +1,132 @@
+2025-10-24 11:57:03.960 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 11:58:22.274 [SUCCESS] [1] Local destination validated. Available space: 102.8 GB
+2025-10-24 11:58:35.290 [INFO] [1] FileSyncPro application shutting down
+2025-10-24 13:49:49.344 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 13:59:50.024 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:00:28.127 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:00:43.331 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:01:03.907 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:01:23.915 [INFO] [1] FileSyncPro application shutting down
+2025-10-24 14:08:31.135 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:08:47.057 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:08:49.496 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:11:44.867 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:12:06.486 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:18:58.144 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:19:07.499 [ERROR] [1] Local path is required
+2025-10-24 14:19:16.658 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:24:47.357 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:25:02.671 [SUCCESS] [1] Local destination validated. Available space: 102.7 GB
+2025-10-24 14:25:32.907 [SUCCESS] [1] Local destination validated. Available space: 101.9 GB
+2025-10-24 14:25:34.497 [INFO] [1] Found 1 ZIP files
+2025-10-24 14:25:34.510 [DEBUG] [1] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 14:25:34.518 [SUCCESS] [1] Analysis complete: 320 files, 0.9 GB
+2025-10-24 14:25:38.443 [DEBUG] [1] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_c7f56eb2-a6ad-4010-96b9-b583514613dd
+2025-10-24 14:26:25.845 [INFO] [1] Extracted: EIT_Pro_URS.zip
+2025-10-24 14:26:56.979 [SUCCESS] [1] Synchronization completed successfully!
+2025-10-24 14:26:57.273 [DEBUG] [1] Cleaned up temporary files
+2025-10-24 14:44:12.353 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:44:45.710 [SUCCESS] [1] Local destination validated. Available space: 100.9 GB
+2025-10-24 14:44:48.618 [INFO] [1] Found 1 ZIP files
+2025-10-24 14:44:48.649 [DEBUG] [1] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 14:44:48.653 [SUCCESS] [1] Analysis complete: 320 files, 0.9 GB
+2025-10-24 14:44:50.541 [DEBUG] [1] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_8ff93594-05dc-4069-bb9a-269b5162b08e
+2025-10-24 14:46:19.596 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:46:36.920 [SUCCESS] [1] Local destination validated. Available space: 100.8 GB
+2025-10-24 14:46:39.368 [INFO] [1] Found 1 ZIP files
+2025-10-24 14:46:39.377 [DEBUG] [1] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 14:46:39.380 [SUCCESS] [1] Analysis complete: 320 files, 0.9 GB
+2025-10-24 14:46:41.856 [DEBUG] [1] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_f2cf773c-ef2a-4850-98d8-6c79ec3b3605
+2025-10-24 14:47:02.522 [INFO] [1] Extracted: EIT_Pro_URS.zip
+2025-10-24 14:47:27.927 [SUCCESS] [1] Synchronization completed successfully!
+2025-10-24 14:47:28.221 [DEBUG] [1] Cleaned up temporary files
+2025-10-24 14:47:41.216 [DEBUG] [1] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_c06f2d0c-6d92-454e-b9c0-e9f52ac9f24c
+2025-10-24 14:51:26.107 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 14:51:47.247 [SUCCESS] [14] Local destination validated. Available space: 100.7 GB
+2025-10-24 14:51:48.603 [INFO] [15] Found 1 ZIP files
+2025-10-24 14:51:48.622 [DEBUG] [15] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 14:51:48.636 [SUCCESS] [15] Analysis complete: 320 files, 0.9 GB
+2025-10-24 14:51:49.877 [DEBUG] [15] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_c9e53072-4674-4963-94bb-d5203ebdf38a
+2025-10-24 14:52:24.549 [INFO] [15] Extracted: EIT_Pro_URS.zip
+2025-10-24 14:52:53.828 [SUCCESS] [4] Synchronization completed successfully!
+2025-10-24 14:52:53.967 [DEBUG] [4] Cleaned up temporary files
+2025-10-24 14:57:30.618 [INFO] [1] FileSyncPro application shutting down
+2025-10-24 14:57:36.391 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:20:30.150 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:22:14.967 [SUCCESS] [14] Local destination validated. Available space: 100.7 GB
+2025-10-24 15:22:16.776 [INFO] [14] Found 1 ZIP files
+2025-10-24 15:22:16.813 [DEBUG] [14] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 15:22:16.817 [SUCCESS] [14] Analysis complete: 320 files, 0.9 GB
+2025-10-24 15:22:17.612 [DEBUG] [14] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_f138cc91-09d0-4c2c-83bd-ac3241632376
+2025-10-24 15:22:38.423 [INFO] [14] Extracted: EIT_Pro_URS.zip
+2025-10-24 15:23:03.923 [SUCCESS] [6] Synchronization completed successfully!
+2025-10-24 15:23:04.042 [DEBUG] [6] Cleaned up temporary files
+2025-10-24 15:25:03.201 [INFO] [1] FileSyncPro application shutting down
+2025-10-24 15:28:21.228 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:42:59.633 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:45:01.278 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:45:17.948 [SUCCESS] [4] Local destination validated. Available space: 99.7 GB
+2025-10-24 15:45:19.187 [INFO] [4] Found 2 ZIP files
+2025-10-24 15:45:19.208 [DEBUG] [4] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 15:45:19.231 [DEBUG] [4] IdeaStatic_Sett1.zip: 2 files, 191.3 KB
+2025-10-24 15:45:19.235 [SUCCESS] [4] Analysis complete: 322 files, 0.9 GB
+2025-10-24 15:45:19.680 [DEBUG] [4] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_c7b7be33-208b-46ae-aa3b-e5c332f3f1ca
+2025-10-24 15:45:39.279 [INFO] [4] Extracted: EIT_Pro_URS.zip
+2025-10-24 15:49:57.515 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:50:21.303 [SUCCESS] [14] Local destination validated. Available space: 98.8 GB
+2025-10-24 15:50:22.202 [INFO] [14] Found 2 ZIP files
+2025-10-24 15:50:22.212 [DEBUG] [14] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 15:50:22.220 [DEBUG] [14] IdeaStatic_Sett1.zip: 2 files, 191.3 KB
+2025-10-24 15:50:22.225 [SUCCESS] [14] Analysis complete: 322 files, 0.9 GB
+2025-10-24 15:50:22.701 [DEBUG] [15] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_968b1cbc-b0a2-4c9d-a46f-36ca56e512ee
+2025-10-24 15:50:44.822 [INFO] [15] Extracted: EIT_Pro_URS.zip
+2025-10-24 15:51:29.423 [INFO] [16] Extracted: IdeaStatic_Sett1.zip
+2025-10-24 15:51:29.437 [SUCCESS] [9] Synchronization completed successfully!
+2025-10-24 15:51:29.629 [DEBUG] [9] Cleaned up temporary files
+2025-10-24 15:52:23.655 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 15:52:36.313 [SUCCESS] [6] Local destination validated. Available space: 98.8 GB
+2025-10-24 15:52:37.351 [INFO] [6] Found 2 ZIP files
+2025-10-24 15:52:37.361 [DEBUG] [6] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 15:52:37.371 [DEBUG] [9] IdeaStatic_Sett1.zip: 2 files, 191.3 KB
+2025-10-24 15:52:37.380 [SUCCESS] [9] Analysis complete: 322 files, 0.9 GB
+2025-10-24 15:52:37.839 [DEBUG] [9] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_c4e513ee-fd3d-4cb3-8e91-3bffdd278ec0
+2025-10-24 15:53:10.379 [INFO] [9] Extracted: EIT_Pro_URS.zip
+2025-10-24 15:53:28.740 [INFO] [7] Extracted: IdeaStatic_Sett1.zip
+2025-10-24 15:53:28.765 [SUCCESS] [14] Synchronization completed successfully!
+2025-10-24 15:53:28.928 [DEBUG] [14] Cleaned up temporary files
+2025-10-24 16:01:20.412 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 16:01:53.640 [SUCCESS] [15] Local destination validated. Available space: 98.8 GB
+2025-10-24 16:01:54.760 [INFO] [15] Found 2 ZIP files
+2025-10-24 16:01:54.807 [DEBUG] [15] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 16:01:54.834 [DEBUG] [15] IdeaStatic_Sett1.zip: 2 files, 191.3 KB
+2025-10-24 16:01:54.839 [SUCCESS] [15] Analysis complete: 322 files, 0.9 GB
+2025-10-24 16:01:55.429 [DEBUG] [15] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_c8395f65-f795-44e5-b545-312a4573e543
+2025-10-24 16:02:29.641 [INFO] [15] Extracted: EIT_Pro_URS.zip
+2025-10-24 16:02:57.469 [INFO] [15] Extracted: IdeaStatic_Sett1.zip
+2025-10-24 16:02:57.511 [SUCCESS] [15] Synchronization completed successfully!
+2025-10-24 16:02:57.894 [DEBUG] [15] Cleaned up temporary files
+2025-10-24 16:20:49.081 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 16:21:30.454 [SUCCESS] [8] Local destination validated. Available space: 98.8 GB
+2025-10-24 16:21:31.684 [INFO] [8] Found 2 ZIP files
+2025-10-24 16:21:31.693 [DEBUG] [8] EIT_Pro_URS.zip: 320 files, 0.9 GB
+2025-10-24 16:21:31.699 [DEBUG] [8] IdeaStatic_Sett1.zip: 2 files, 191.3 KB
+2025-10-24 16:21:31.703 [SUCCESS] [16] Analysis complete: 322 files, 0.9 GB
+2025-10-24 16:21:32.258 [DEBUG] [16] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_b480a923-6312-4a34-a027-b565f4bc22a6
+2025-10-24 16:22:25.999 [INFO] [16] Extracted: EIT_Pro_URS.zip
+2025-10-24 16:22:53.703 [INFO] [16] Extracted: IdeaStatic_Sett1.zip
+2025-10-24 16:22:53.741 [SUCCESS] [16] Synchronization completed successfully!
+2025-10-24 16:22:54.055 [DEBUG] [16] Cleaned up temporary files
+2025-10-24 16:46:18.408 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 16:47:39.540 [ERROR] [9] SharePoint username is required
+2025-10-24 16:56:28.920 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 16:57:15.079 [ERROR] [15] SharePoint username is required
+2025-10-24 17:22:18.420 [INFO] [1] FileSyncPro MVVM application started
+2025-10-24 17:22:39.760 [SUCCESS] [15] SharePoint configuration validated successfully. Note: Actual connectivity requires Microsoft Graph API setup.
+2025-10-24 17:22:41.517 [INFO] [15] Found 1 ZIP files
+2025-10-24 17:22:41.564 [DEBUG] [15] IdeaStatic_Sett1.zip: 2 files, 191.3 KB
+2025-10-24 17:22:41.571 [SUCCESS] [15] Analysis complete: 2 files, 191.3 KB
+2025-10-24 17:22:42.717 [DEBUG] [15] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_300cd711-17ba-4b08-b680-ff77edffa303
+2025-10-24 17:22:42.754 [INFO] [15] Extracted: IdeaStatic_Sett1.zip
+2025-10-24 17:22:43.776 [SUCCESS] [15] Synchronization completed successfully!
+2025-10-24 17:22:43.784 [DEBUG] [15] Cleaned up temporary files
+2025-10-24 17:38:15.813 [INFO] [1] FileSyncPro application shutting down

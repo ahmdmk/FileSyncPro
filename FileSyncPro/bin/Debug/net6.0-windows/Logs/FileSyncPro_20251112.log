@@ -1,0 +1,27 @@
+2025-11-12 10:47:23.968 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 10:50:41.538 [INFO] [1] FileSyncPro application shutting down
+2025-11-12 10:57:46.327 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 11:44:47.273 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 11:45:17.716 [INFO] [1] FileSyncPro application shutting down
+2025-11-12 11:45:20.979 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 11:51:54.560 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 11:52:44.031 [SUCCESS] [1] ✅ Connected successfully to: OSS-EnggApps-DEV
+Site: petrofaconline.sharepoint.com:/sites/OSS-EnggApps-DEV
+2025-11-12 11:52:46.619 [DEBUG] [1] Created temp directory: C:\Users\kunhamad.mk\AppData\Local\Temp\FileSyncPro_a5c25afc-1b32-4508-be24-bbbec076a503
+2025-11-12 11:52:52.479 [INFO] [1] Extracted: IGDE3_102220252200PM_p.zip
+2025-11-12 11:54:56.966 [INFO] [1] Extracted: UpdateDisciplineELRRequest_20251104122937.zip
+2025-11-12 11:55:03.352 [INFO] [1] Extracted: UpdateELRBudgets_20251104101304.zip
+2025-11-12 11:55:08.552 [INFO] [1] Extracted: UpdateForecasts_20251104101543.zip
+2025-11-12 11:55:14.036 [INFO] [1] Extracted: UpdateILRRequest_20251104133023.zip
+2025-11-12 11:55:19.925 [INFO] [1] Extracted: UpdateReforecasts_20251104102405.zip
+2025-11-12 11:55:24.683 [SUCCESS] [1] Synchronization completed successfully!
+2025-11-12 11:55:24.789 [DEBUG] [1] Cleaned up temporary files
+2025-11-12 11:58:14.432 [SUCCESS] [1] ✅ Connected successfully to: OSS-EnggApps-DEV
+Site: petrofaconline.sharepoint.com:/sites/OSS-EnggApps-DEV
+2025-11-12 11:58:15.610 [INFO] [1] No ZIP files found. Syncing folders and contents directly...
+2025-11-12 11:58:16.542 [SUCCESS] [1] Synchronization completed successfully!
+2025-11-12 15:59:03.161 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 16:04:16.471 [INFO] [1] FileSyncPro MVVM application started
+2025-11-12 16:05:50.382 [SUCCESS] [1] Local destination validated. Available space: 71.1 GB
+2025-11-12 16:05:51.621 [INFO] [1] Downloading from SharePoint to Local...
+2025-11-12 16:06:14.834 [SUCCESS] [1] Synchronization completed successfully!

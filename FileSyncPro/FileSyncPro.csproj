@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyTitle>Petrofac FileSyncPro</AssemblyTitle>
+    <AssemblyDescription>Advanced File Synchronization Tool for Petrofac</AssemblyDescription>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Copyright>Copyright © 2025 Petrofac</Copyright>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.4" />
+    <PackageReference Include="Microsoft.Graph" Version="5.95.0" />
+    <PackageReference Include="Azure.Identity" Version="1.17.0" />
+    <PackageReference Include="Microsoft.SharePointOnline.CSOM" Version="16.1.24322.12000" />
+    <PackageReference Include="SSH.NET" Version="2020.0.2" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Folder Include="Commands\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+    <Resource Include="logo.jpg" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="FileSyncPro\**" />
+    <EmbeddedResource Remove="FileSyncPro\**" />
+    <None Remove="FileSyncPro\**" />
+    <Page Remove="FileSyncPro\**" />
+  </ItemGroup>
+</Project>
