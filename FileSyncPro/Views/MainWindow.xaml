@@ -6,11 +6,10 @@
         xmlns:models="clr-namespace:FileSyncPro.Models"
         xmlns:local="clr-namespace:FileSyncPro.Utilities"
         Title="Petrofac FileSyncPro - Advanced File Synchronization"
-        Height="1000" Width="1100"
-        WindowStartupLocation="CenterScreen"
         Background="#F5F7FA"
         Icon="/app.ico"
-        MinHeight="950" MinWidth="1000">
+        MinHeight="540" MinWidth="750">
+
 
     <Window.Resources>
         <converters:BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -272,6 +271,7 @@
                                   Margin="0,0,0,15">
                             <ComboBoxItem Content="Local" IsSelected="True"/>
                             <ComboBoxItem Content="SharePoint"/>
+                            <ComboBoxItem Content="SFTP"/>
                         </ComboBox>
 
                         <!-- Local Source Configuration -->
@@ -314,6 +314,75 @@
                                      Height="38"
                                      ToolTip="Example: https://yourcompany.sharepoint.com/sites/yoursite/Shared Documents/Folder"/>
                         </StackPanel>
+
+                        <!-- SFTP Source Configuration -->
+                        <Grid Visibility="{Binding IsSourceSFTP, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="Host *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPHost, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="Port *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPPort, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="Username *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPUser, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="Password *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <PasswordBox x:Name="txtSourceSFTPPassword"
+                                             local:PasswordHelper.Attach="True"
+                                             local:PasswordHelper.Password="{Binding SourceConfig.SFTPPassword, Mode=TwoWay}"
+                                             Height="38"
+                                             Padding="10,8"
+                                             BorderBrush="#D1D5DB"
+                                             BorderThickness="1"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,10">
+                                <TextBlock Text="Remote Path *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0"
+                                             Text="{Binding SourceConfig.SFTPPath, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource ModernTextBox}" Height="38"
+                                             Margin="0,0,10,0"
+                                             ToolTip="Example: /data/files"/>
+                                    <Button Grid.Column="1"
+                                            Content="Browse"
+                                            Command="{Binding BrowseSFTPSourceCommand}"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Width="100" Height="38"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Row 3: Remember Source Credentials -->
+                            <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,10">
+                                <CheckBox IsChecked="{Binding RememberSourceSftpCredentials, Mode=TwoWay}" FontSize="12" Foreground="#374151" VerticalAlignment="Center"/>
+                                <TextBlock Text="Save SFTP source user/password for next use" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#374151" FontSize="12"/>
+                            </StackPanel>
+                        </Grid>
 
                         <!-- Validation Messages -->
                         <StackPanel Margin="0,10,0,0">
@@ -507,6 +576,7 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <!-- Row 0: Host & Port -->
@@ -546,6 +616,11 @@
                                 <TextBox Text="{Binding DestinationConfig.SFTPPath, UpdateSourceTrigger=PropertyChanged}"
                                          Style="{StaticResource ModernTextBox}" Height="38"/>
                             </StackPanel>
+                            <!-- Row 3: Remember Destination Credentials -->
+                            <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,10">
+                                <CheckBox IsChecked="{Binding RememberDestinationSftpCredentials, Mode=TwoWay}" FontSize="12" Foreground="#374151" VerticalAlignment="Center"/>
+                                <TextBlock Text="Save SFTP destination user/password for next use" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#374151" FontSize="12"/>
+                            </StackPanel>
                         </Grid>
                     </StackPanel>
                 </GroupBox>
@@ -567,13 +642,22 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <ProgressBar Height="8"
+                                             IsIndeterminate="True"
+                                             Visibility="{Binding IsOperationRunning, Converter={StaticResource BoolToVisibility}}"
+                                             Background="#E5E7EB"
+                                             Foreground="#0078D7"
+                                             BorderThickness="0"
+                                             Margin="0,0,0,6"/>
+
                                 <ProgressBar Value="{Binding Progress.Percentage}"
                                              Height="32"
                                              Background="#F3F4F6"
                                              Foreground="#0078D7"
                                              BorderThickness="0"
                                              Minimum="0"
-                                             Maximum="100">
+                                             Maximum="100"
+                                             IsEnabled="False">
                                     <ProgressBar.Resources>
                                         <Style TargetType="ProgressBar">
                                             <Setter Property="Template">

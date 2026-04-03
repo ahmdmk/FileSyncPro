@@ -10,6 +10,49 @@ namespace FileSyncPro.Services
 {
     public class SFTPSyncService
     {
+        public async Task DownloadFromSFTPAsync(DestinationConfig sourceConfig, string localDestPath, SyncProgress progress)
+        {
+            using var client = new SftpClient(sourceConfig.SFTPHost, sourceConfig.SFTPPort, sourceConfig.SFTPUser, sourceConfig.SFTPPassword);
+            await Task.Run(() => client.Connect());
+
+            Directory.CreateDirectory(localDestPath);
+            await LogAsync(progress, $"Downloading from SFTP: {sourceConfig.SFTPHost}{sourceConfig.SFTPPath}", LogLevel.INFO);
+
+            await Task.Run(() => DownloadDirectory(client, sourceConfig.SFTPPath, localDestPath, progress));
+
+            client.Disconnect();
+            await LogAsync(progress, "SFTP download completed", LogLevel.SUCCESS);
+        }
+
+        private void DownloadDirectory(SftpClient client, string remotePath, string localPath, SyncProgress progress)
+        {
+            foreach (var entry in client.ListDirectory(remotePath))
+            {
+                if (entry.Name == "." || entry.Name == "..") continue;
+
+                var localEntryPath = Path.Combine(localPath, entry.Name);
+                if (entry.IsDirectory)
+                {
+                    Directory.CreateDirectory(localEntryPath);
+                    DownloadDirectory(client, entry.FullName, localEntryPath, progress);
+                }
+                else
+                {
+                    using var fileStream = File.Create(localEntryPath);
+                    client.DownloadFile(entry.FullName, fileStream);
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        progress.LogEntries.Add(new LogEntry
+                        {
+                            Timestamp = DateTime.Now,
+                            Level = LogLevel.INFO,
+                            Message = $"{DateTime.Now:HH:mm:ss} [INFO] Downloaded: {entry.Name}"
+                        });
+                    });
+                }
+            }
+        }
+
         public async Task SyncAsync(string sourcePath, DestinationConfig config, SyncProgress progress)
         {
             using var client = new SftpClient(config.SFTPHost, config.SFTPPort, config.SFTPUser, config.SFTPPassword);

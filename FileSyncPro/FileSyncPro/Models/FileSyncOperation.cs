@@ -18,7 +18,8 @@ namespace FileSyncPro.Models
     public enum SourceType
     {
         Local,
-        SharePoint
+        SharePoint,
+        SFTP
     }
 
     public enum DestinationType

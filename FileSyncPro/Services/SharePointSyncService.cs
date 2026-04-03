@@ -1,122 +1,131 @@
+#nullable enable
 using FileSyncPro.Models;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Azure.Identity;
+using FileSyncPro.Utilities;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.Broker;
+using LogLevel = FileSyncPro.Models.LogLevel;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Collections.Generic;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Interop;
 
 namespace FileSyncPro.Services
 {
     public class SharePointSyncService
     {
-        // Public Azure AD app for Microsoft Graph - works for any Microsoft 365 user
-        private const string ClientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e"; // Microsoft Graph PowerShell
-        private static GraphServiceClient? _graphClient;
+        // Microsoft Office - has WAM broker redirect registered
+        private const string ClientId = "d3590ed6-52b3-4102-aeff-aad2292ab01c";
+        private static HttpClient? _httpClient;
+        private static string? _cachedHostname;
+        private static IPublicClientApplication? _msalApp;
 
-        /// <summary>
-        /// Get authenticated Graph client using interactive browser authentication.
-        /// Works with ANY user who has SharePoint access - no custom Azure app registration required.
-        /// </summary>
-        private async Task<GraphServiceClient> GetGraphClientAsync()
+        public static void ResetAuth()
         {
-            if (_graphClient != null)
-                return _graphClient;
+            _httpClient?.Dispose();
+            _httpClient = null;
+            _cachedHostname = null;
+            _msalApp = null;
+        }
 
-            var scopes = new[] { "https://graph.microsoft.com/.default" };
+        private async Task<HttpClient> GetAuthenticatedClientAsync(string hostname)
+        {
+            if (_httpClient != null && _cachedHostname == hostname)
+                return _httpClient;
 
-            var options = new InteractiveBrowserCredentialOptions
+            // Get window handle on UI thread for WAM broker
+            IntPtr windowHandle = IntPtr.Zero;
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                ClientId = ClientId,
-                TenantId = "organizations", // Works with any organization
-                RedirectUri = new Uri("http://localhost")
-            };
+                windowHandle = new WindowInteropHelper(Application.Current.MainWindow).Handle;
+            });
 
-            var interactiveCredential = new InteractiveBrowserCredential(options);
-            _graphClient = new GraphServiceClient(interactiveCredential, scopes);
+            if (_msalApp == null)
+            {
+                _msalApp = PublicClientApplicationBuilder
+                    .Create(ClientId)
+                    .WithAuthority("https://login.microsoftonline.com/organizations")
+                    .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows))
+                    .WithParentActivityOrWindow(() => windowHandle)
+                    .Build();
+            }
 
-            return _graphClient;
+            var scopes = new[] { $"https://{hostname}/AllSites.Read" };
+            AuthenticationResult result;
+
+            try
+            {
+                // Try silent auth first (uses cached token or Windows SSO)
+                var accounts = await _msalApp.GetAccountsAsync();
+                result = await _msalApp.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
+                    .ExecuteAsync();
+            }
+            catch (MsalUiRequiredException)
+            {
+                // Fall back to interactive (WAM popup)
+                result = await _msalApp.AcquireTokenInteractive(scopes)
+                    .ExecuteAsync();
+            }
+
+            var client = new HttpClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", result.AccessToken);
+            client.DefaultRequestHeaders.Accept.Clear();
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json"));
+
+            _httpClient?.Dispose();
+            _httpClient = client;
+            _cachedHostname = hostname;
+
+            return _httpClient;
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            int order = 0;
+            double size = bytes;
+            while (size >= 1024 && order < sizes.Length - 1) { order++; size /= 1024; }
+            return $"{size:0.##} {sizes[order]}";
         }
 
         /// <summary>
-        /// Synchronize files from sourcePath to SharePoint using Microsoft Graph.
-        /// Preserves folder structure from the source.
+        /// Encode a server-relative path for use in SharePoint REST API URLs.
+        /// Encodes each segment separately to preserve forward slashes.
         /// </summary>
-        public async Task SyncAsync(string sourcePath, DestinationConfig config, SyncProgress progress)
+        private string EncodeSharePointPath(string serverRelativePath)
         {
-            if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath))
-            {
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.ERROR,
-                    Message = "❌ Invalid source path for SharePoint sync."
-                });
-                return;
-            }
-
-            var files = System.IO.Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories);
-
-            foreach (var file in files)
-            {
-                try
-                {
-                    // Calculate relative path to preserve folder structure
-                    var relativePath = Path.GetRelativePath(sourcePath, file);
-
-                    await UploadFileAsync(config, file, relativePath);
-
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.SUCCESS,
-                        Message = $"✅ Uploaded: {relativePath}"
-                    });
-                }
-                catch (Exception ex)
-                {
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.ERROR,
-                        Message = $"❌ Failed to upload {Path.GetFileName(file)}: {ex.Message}"
-                    });
-                }
-            }
+            return string.Join("/", serverRelativePath.Split('/')
+                .Select(segment => Uri.EscapeDataString(segment)));
         }
 
-        /// <summary>
-        /// Helper method to parse query string
-        /// </summary>
-        private string GetQueryStringParameter(string query, string paramName)
+        private string? GetQueryStringParameter(string query, string paramName)
         {
-            if (string.IsNullOrEmpty(query))
-                return null;
-
+            if (string.IsNullOrEmpty(query)) return null;
             query = query.TrimStart('?');
-            var pairs = query.Split('&');
-
-            foreach (var pair in pairs)
+            foreach (var pair in query.Split('&'))
             {
-                var keyValue = pair.Split('=');
-                if (keyValue.Length == 2 && keyValue[0].Equals(paramName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return Uri.UnescapeDataString(keyValue[1]);
-                }
+                var kv = pair.Split('=');
+                if (kv.Length == 2 && kv[0].Equals(paramName, StringComparison.OrdinalIgnoreCase))
+                    return Uri.UnescapeDataString(kv[1]);
             }
-
             return null;
         }
 
-        /// <summary>
-        /// Helper method to extract site URL, library, and folder from full SharePoint path
-        /// </summary>
         private (string hostname, string sitePath, string libraryName, string folderPath) ParseSharePointUrl(string fullUrl)
         {
             var uri = new Uri(fullUrl);
+            // Strip MCAS proxy suffix (.mcas.ms) to get the real SharePoint hostname
             var hostname = uri.Host;
+            if (hostname.EndsWith(".mcas.ms", StringComparison.OrdinalIgnoreCase))
+                hostname = hostname.Substring(0, hostname.Length - ".mcas.ms".Length);
+
             var path = uri.AbsolutePath.TrimStart('/');
             string libraryName = "";
             string folderPath = "";
@@ -125,39 +134,29 @@ namespace FileSyncPro.Services
             if (!string.IsNullOrEmpty(uri.Query))
             {
                 var idParam = GetQueryStringParameter(uri.Query, "id");
-
                 if (!string.IsNullOrEmpty(idParam))
                 {
-                    // idParam example: /sites/OSS-EnggApps-DEV/Shared Documents/KT Videos
-                    // Extract library and folder from this path
                     var decodedPath = Uri.UnescapeDataString(idParam).TrimStart('/');
-
-                    // Find the site portion
                     if (decodedPath.StartsWith("sites/", StringComparison.OrdinalIgnoreCase))
                     {
                         var parts = decodedPath.Split('/');
-                        if (parts.Length >= 4) // sites/sitename/library/folder...
+                        if (parts.Length >= 3)
                         {
-                            libraryName = parts[2]; // "Shared Documents"
+                            libraryName = parts[2];
                             if (parts.Length > 3)
-                            {
-                                // Join remaining parts as folder path
                                 folderPath = string.Join("/", parts.Skip(3));
-                            }
                         }
                     }
                 }
             }
 
-            // Extract just the site path (e.g., "sites/OSS-EnggApps-DEV")
-            string sitePath = path;
+            // Extract just the site path (e.g., "sites/AP_DCC")
+            string sitePath = "";
             if (path.StartsWith("sites/", StringComparison.OrdinalIgnoreCase))
             {
                 var parts = path.Split('/');
                 if (parts.Length >= 2)
-                {
                     sitePath = $"{parts[0]}/{parts[1]}";
-                }
             }
             else if (path.Contains("/sites/"))
             {
@@ -165,9 +164,7 @@ namespace FileSyncPro.Services
                 var afterSites = path.Substring(sitesIndex + 1);
                 var parts = afterSites.Split('/');
                 if (parts.Length >= 2)
-                {
                     sitePath = $"{parts[0]}/{parts[1]}";
-                }
             }
             else if (path.Contains("Shared") || path.Contains("Documents") || path.Contains("Forms") || path.Contains("_layouts"))
             {
@@ -178,234 +175,200 @@ namespace FileSyncPro.Services
         }
 
         /// <summary>
-        /// Upload a single file to SharePoint document library using Microsoft Graph.
+        /// Build server-relative URL for the target folder.
         /// </summary>
-        /// <param name="config">Destination configuration</param>
-        /// <param name="localFilePath">Full local file path</param>
-        /// <param name="relativePath">Relative path from source to preserve folder structure (optional)</param>
-        public async Task UploadFileAsync(DestinationConfig config, string localFilePath, string relativePath = null)
+        private string BuildServerRelativeUrl(string sitePath, string libraryName, string folderPath)
         {
-            try
-            {
-                var graphClient = await GetGraphClientAsync();
-
-                // Parse SharePoint URL to get site path, library, and folder
-                var (hostname, sitePath, parsedLibraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
-
-                // Get the site ID using the correct format
-                string siteAddress;
-                if (string.IsNullOrWhiteSpace(sitePath))
-                {
-                    siteAddress = $"{hostname}:/";
-                }
-                else
-                {
-                    siteAddress = $"{hostname}:/{sitePath}";
-                }
-
-                var site = await graphClient.Sites[siteAddress].GetAsync();
-
-                if (site == null || string.IsNullOrEmpty(site.Id))
-                {
-                    throw new Exception("Could not find SharePoint site");
-                }
-
-                // Use parsed library name if available, otherwise use config or default
-                string libraryName;
-                if (!string.IsNullOrWhiteSpace(parsedLibraryName))
-                {
-                    libraryName = parsedLibraryName;
-                }
-                else if (!string.IsNullOrWhiteSpace(config.SharePointLibrary))
-                {
-                    libraryName = config.SharePointLibrary;
-                }
-                else
-                {
-                    libraryName = "Documents";
-                }
-
-                var drives = await graphClient.Sites[site.Id].Drives.GetAsync();
-
-                // Try to find the drive by name with common variations
-                Microsoft.Graph.Models.Drive targetDrive = null;
-
-                // Common name mappings for SharePoint libraries
-                var libraryNameVariations = new List<string> { libraryName };
-
-                if (libraryName.Equals("Shared Documents", StringComparison.OrdinalIgnoreCase))
-                {
-                    libraryNameVariations.Add("Documents");
-                }
-                else if (libraryName.Equals("Documents", StringComparison.OrdinalIgnoreCase))
-                {
-                    libraryNameVariations.Add("Shared Documents");
-                }
-
-                foreach (var nameVariation in libraryNameVariations)
-                {
-                    targetDrive = drives?.Value?.FirstOrDefault(d =>
-                        d.Name?.Equals(nameVariation, StringComparison.OrdinalIgnoreCase) == true);
-
-                    if (targetDrive != null)
-                    {
-                        break;
-                    }
-                }
-
-                if (targetDrive == null)
-                {
-                    // List available drives for debugging
-                    var availableDrives = drives?.Value != null
-                        ? string.Join(", ", drives.Value.Select(d => $"'{d.Name}'"))
-                        : "none";
-                    throw new Exception($"Document library '{libraryName}' not found. Available libraries: {availableDrives}");
-                }
-
-                // Upload the file
-                using var fileStream = System.IO.File.OpenRead(localFilePath);
-
-                // Build the upload path with folder structure preservation
-                string uploadPath;
-                if (!string.IsNullOrWhiteSpace(relativePath))
-                {
-                    // Use relative path to preserve folder structure, normalize path separators
-                    var normalizedRelativePath = relativePath.Replace(Path.DirectorySeparatorChar, '/');
-
-                    if (!string.IsNullOrWhiteSpace(folderPath))
-                    {
-                        // Combine SharePoint folder with relative path
-                        uploadPath = $"{folderPath}/{normalizedRelativePath}";
-                    }
-                    else
-                    {
-                        uploadPath = normalizedRelativePath;
-                    }
-                }
-                else
-                {
-                    // Fall back to just filename if no relative path provided
-                    var fileName = Path.GetFileName(localFilePath);
-                    uploadPath = string.IsNullOrWhiteSpace(folderPath)
-                        ? fileName
-                        : $"{folderPath}/{fileName}";
-                }
-
-                // Upload using Microsoft Graph API v5
-                var driveItem = await graphClient.Drives[targetDrive.Id]
-                    .Root
-                    .ItemWithPath(uploadPath)
-                    .Content
-                    .PutAsync(fileStream);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Upload failed for {Path.GetFileName(localFilePath)}: {ex.Message}");
-            }
+            var url = "/";
+            if (!string.IsNullOrWhiteSpace(sitePath))
+                url += sitePath + "/";
+            if (!string.IsNullOrWhiteSpace(libraryName))
+                url += libraryName;
+            if (!string.IsNullOrWhiteSpace(folderPath))
+                url += "/" + folderPath;
+            return url.TrimEnd('/');
         }
 
         /// <summary>
-        /// Download files from SharePoint to local destination.
+        /// Recursively calculate total size and file count of a SharePoint folder.
+        /// </summary>
+        private async Task<(long totalSize, int fileCount)> GetFolderSizeAsync(HttpClient client, string siteUrl, string folderServerRelativeUrl)
+        {
+            long totalSize = 0;
+            int fileCount = 0;
+
+            try
+            {
+                var encodedPath = EncodeSharePointPath(folderServerRelativeUrl);
+
+                // Get files
+                var filesUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Files?$select=Length";
+                var filesResponse = await client.GetAsync(filesUrl);
+                if (filesResponse.IsSuccessStatusCode)
+                {
+                    var filesJson = JsonDocument.Parse(await filesResponse.Content.ReadAsStringAsync());
+                    foreach (var file in filesJson.RootElement.GetProperty("value").EnumerateArray())
+                    {
+                        fileCount++;
+                        if (file.TryGetProperty("Length", out var lengthProp))
+                        {
+                            if (long.TryParse(lengthProp.ToString(), out var size))
+                                totalSize += size;
+                        }
+                    }
+                }
+
+                // Get subfolders
+                var foldersUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Folders?$select=Name,ServerRelativeUrl";
+                var foldersResponse = await client.GetAsync(foldersUrl);
+                if (foldersResponse.IsSuccessStatusCode)
+                {
+                    var foldersJson = JsonDocument.Parse(await foldersResponse.Content.ReadAsStringAsync());
+                    foreach (var folder in foldersJson.RootElement.GetProperty("value").EnumerateArray())
+                    {
+                        var folderName = folder.GetProperty("Name").GetString()!;
+                        if (folderName == "Forms" || folderName.StartsWith("_"))
+                            continue;
+
+                        var subFolderUrl = folder.GetProperty("ServerRelativeUrl").GetString()!;
+                        var (subSize, subCount) = await GetFolderSizeAsync(client, siteUrl, subFolderUrl);
+                        totalSize += subSize;
+                        fileCount += subCount;
+                    }
+                }
+            }
+            catch { /* Ignore errors during size calculation */ }
+
+            return (totalSize, fileCount);
+        }
+
+        /// <summary>
+        /// Download files from SharePoint to local destination using SharePoint REST API.
         /// </summary>
         public async Task DownloadFromSharePointAsync(DestinationConfig config, string localDestinationPath, SyncProgress progress)
         {
             try
             {
-                var graphClient = await GetGraphClientAsync();
+                var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
+                var client = await GetAuthenticatedClientAsync(hostname);
+                var siteUrl = $"https://{hostname}/{sitePath}";
+                var serverRelativePath = BuildServerRelativeUrl(sitePath, libraryName, folderPath);
 
-                // Parse SharePoint URL to get site path, library, and folder
-                var (hostname, sitePath, parsedLibraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
-
-                // Get the site ID using the correct format
-                string siteAddress;
-                if (string.IsNullOrWhiteSpace(sitePath))
-                {
-                    siteAddress = $"{hostname}:/";
-                }
-                else
-                {
-                    siteAddress = $"{hostname}:/{sitePath}";
-                }
-
-                var site = await graphClient.Sites[siteAddress].GetAsync();
-
-                if (site == null || string.IsNullOrEmpty(site.Id))
-                {
-                    throw new Exception("Could not find SharePoint site");
-                }
-
-                // Use parsed library name if available, otherwise use config or default
-                string libraryName;
-                if (!string.IsNullOrWhiteSpace(parsedLibraryName))
-                {
-                    libraryName = parsedLibraryName;
-                }
-                else if (!string.IsNullOrWhiteSpace(config.SharePointLibrary))
-                {
-                    libraryName = config.SharePointLibrary;
-                }
-                else
-                {
-                    libraryName = "Documents";
-                }
-
-                var drives = await graphClient.Sites[site.Id].Drives.GetAsync();
-
-                // Try to find the drive by name with common variations
-                Microsoft.Graph.Models.Drive targetDrive = null;
-
-                // Common name mappings for SharePoint libraries
-                var libraryNameVariations = new List<string> { libraryName };
-
-                if (libraryName.Equals("Shared Documents", StringComparison.OrdinalIgnoreCase))
-                {
-                    libraryNameVariations.Add("Documents");
-                }
-                else if (libraryName.Equals("Documents", StringComparison.OrdinalIgnoreCase))
-                {
-                    libraryNameVariations.Add("Shared Documents");
-                }
-
-                foreach (var nameVariation in libraryNameVariations)
-                {
-                    targetDrive = drives?.Value?.FirstOrDefault(d =>
-                        d.Name?.Equals(nameVariation, StringComparison.OrdinalIgnoreCase) == true);
-
-                    if (targetDrive != null)
-                    {
-                        break;
-                    }
-                }
-
-                if (targetDrive == null)
-                {
-                    var availableDrives = drives?.Value != null
-                        ? string.Join(", ", drives.Value.Select(d => $"'{d.Name}'"))
-                        : "none";
-                    throw new Exception($"Document library '{libraryName}' not found. Available libraries: {availableDrives}");
-                }
-
-                // Create local destination directory if it doesn't exist
                 if (!Directory.Exists(localDestinationPath))
-                {
                     Directory.CreateDirectory(localDestinationPath);
-                }
 
                 progress.LogEntries.Add(new LogEntry
                 {
                     Timestamp = DateTime.Now,
                     Level = LogLevel.INFO,
-                    Message = $"Starting download from SharePoint library: {libraryName}"
+                    Message = $"Downloading from: {serverRelativePath}"
                 });
 
-                // Download files recursively
-                await DownloadFolderRecursiveAsync(graphClient, targetDrive.Id, folderPath, localDestinationPath, progress);
+                // Calculate total source size
+                progress.CurrentOperation = "Calculating source size...";
+                progress.LogEntries.Add(new LogEntry
+                {
+                    Timestamp = DateTime.Now,
+                    Level = LogLevel.INFO,
+                    Message = "Calculating source size..."
+                });
+
+                var (totalSize, fileCount) = await GetFolderSizeAsync(client, siteUrl, serverRelativePath);
+
+                progress.LogEntries.Add(new LogEntry
+                {
+                    Timestamp = DateTime.Now,
+                    Level = LogLevel.INFO,
+                    Message = $"Source: {fileCount} files, Total size: {FormatBytes(totalSize)}"
+                });
+
+                // Calculate destination size
+                long totalDestinationSize = 0;
+                int destFileCount = 0;
+                try
+                {
+                    var destFiles = Directory.GetFiles(localDestinationPath, "*", SearchOption.AllDirectories);
+                    destFileCount = destFiles.Length;
+                    foreach (var file in destFiles)
+                    {
+                        try
+                        {
+                            totalDestinationSize += new FileInfo(file).Length;
+                        }
+                        catch
+                        {
+                            // Ignore files that disappear or cannot be accessed during size calculation.
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.WARNING,
+                        Message = $"Failed to calculate destination size: {ex.Message}"
+                    });
+                }
+
+                if (destFileCount > 0 || totalDestinationSize > 0)
+                {
+                    progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.INFO,
+                        Message = $"Destination: {destFileCount} files, Total size: {FormatBytes(totalDestinationSize)}"
+                    });
+                }
+
+                if (FileHelper.TryGetDestinationAvailableSpace(localDestinationPath, out var availableSpace, out var spaceMessage))
+                {
+                    progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.INFO,
+                        Message = $"Destination available space: {FormatBytes(availableSpace)}"
+                    });
+
+                    if (availableSpace < totalSize)
+                    {
+                        var errorMsg = $"Insufficient destination space. Required: {FormatBytes(totalSize)}, Available: {FormatBytes(availableSpace)}.";
+                        progress.LogEntries.Add(new LogEntry
+                        {
+                            Timestamp = DateTime.Now,
+                            Level = LogLevel.ERROR,
+                            Message = errorMsg
+                        });
+                        throw new IOException(errorMsg);
+                    }
+                }
+                else
+                {
+                    progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.WARNING,
+                        Message = $"Destination free-space check skipped: {spaceMessage}"
+                    });
+                }
+
+                progress.Percentage = 0;
+                progress.CurrentOperation = $"Downloading 0 / {fileCount} files...";
+                int[] downloadedCount = { 0 };
+                long[] downloadedBytes = { 0 };
+                var startTime = DateTime.Now;
+
+                await DownloadFolderRecursiveAsync(client, siteUrl, serverRelativePath, localDestinationPath, progress,
+                    fileCount, totalSize, downloadedCount, downloadedBytes, startTime);
+
+                progress.Percentage = 100;
+                progress.CurrentOperation = "Download complete!";
 
                 progress.LogEntries.Add(new LogEntry
                 {
                     Timestamp = DateTime.Now,
                     Level = LogLevel.SUCCESS,
-                    Message = "Download from SharePoint completed successfully!"
+                    Message = $"Download completed! {downloadedCount[0]} / {fileCount} files, {FormatBytes(downloadedBytes[0])} / {FormatBytes(totalSize)}, Duration: {(DateTime.Now - startTime):hh\\:mm\\:ss}"
                 });
             }
             catch (Exception ex)
@@ -420,85 +383,123 @@ namespace FileSyncPro.Services
             }
         }
 
-        /// <summary>
-        /// Recursively download files from a SharePoint folder.
-        /// </summary>
-        private async Task DownloadFolderRecursiveAsync(GraphServiceClient graphClient, string driveId, string sharePointFolderPath, string localFolderPath, SyncProgress progress)
+        private async Task DownloadFolderRecursiveAsync(HttpClient client, string siteUrl, string folderServerRelativeUrl, string localFolderPath, SyncProgress progress,
+            int totalFiles, long totalSize, int[] downloadedCount, long[] downloadedBytes, DateTime startTime)
         {
             try
             {
-                // Get items in the current folder
-                Microsoft.Graph.Models.DriveItemCollectionResponse items;
-                if (string.IsNullOrWhiteSpace(sharePointFolderPath))
+                var encodedPath = EncodeSharePointPath(folderServerRelativeUrl);
+
+                // Get files in folder
+                var filesUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Files?$select=Name,ServerRelativeUrl,Length";
+                var filesResponse = await client.GetAsync(filesUrl);
+
+                if (!filesResponse.IsSuccessStatusCode)
                 {
-                    // Get root items
-                    var rootItem = await graphClient.Drives[driveId].Root.GetAsync();
-                    items = await graphClient.Drives[driveId].Items[rootItem.Id].Children.GetAsync();
-                }
-                else
-                {
-                    // Get items in specific folder
-                    var folderItem = await graphClient.Drives[driveId].Root.ItemWithPath(sharePointFolderPath).GetAsync();
-                    items = await graphClient.Drives[driveId].Items[folderItem.Id].Children.GetAsync();
+                    var error = await filesResponse.Content.ReadAsStringAsync();
+                    throw new Exception($"Failed to list files ({filesResponse.StatusCode}): {error}");
                 }
 
-                if (items?.Value == null)
-                    return;
+                var filesJson = JsonDocument.Parse(await filesResponse.Content.ReadAsStringAsync());
 
-                foreach (var item in items.Value)
+                foreach (var file in filesJson.RootElement.GetProperty("value").EnumerateArray())
                 {
-                    if (item.Folder != null)
+                    var fileName = file.GetProperty("Name").GetString()!;
+                    var fileServerRelativeUrl = file.GetProperty("ServerRelativeUrl").GetString()!;
+                    long fileSize = 0;
+                    if (file.TryGetProperty("Length", out var lengthProp))
+                        long.TryParse(lengthProp.ToString(), out fileSize);
+
+                    try
                     {
-                        // It's a folder - create local folder and recurse
-                        var localSubFolderPath = Path.Combine(localFolderPath, item.Name);
-                        Directory.CreateDirectory(localSubFolderPath);
-
-                        var subFolderPath = string.IsNullOrWhiteSpace(sharePointFolderPath)
-                            ? item.Name
-                            : $"{sharePointFolderPath}/{item.Name}";
+                        var sizeText = fileSize > 0 ? $" ({FormatBytes(fileSize)})" : "";
+                        progress.CurrentOperation = $"Downloading {downloadedCount[0] + 1} / {totalFiles}: {fileName}";
 
                         progress.LogEntries.Add(new LogEntry
                         {
                             Timestamp = DateTime.Now,
                             Level = LogLevel.INFO,
-                            Message = $"📁 Processing folder: {item.Name}"
+                            Message = $"[{downloadedCount[0] + 1}/{totalFiles}] Downloading: {fileName}{sizeText}"
                         });
 
-                        await DownloadFolderRecursiveAsync(graphClient, driveId, subFolderPath, localSubFolderPath, progress);
+                        var encodedFileUrl = EncodeSharePointPath(fileServerRelativeUrl);
+                        var downloadUrl = $"{siteUrl}/_api/web/GetFileByServerRelativeUrl('{encodedFileUrl}')/$value";
+                        // Use ResponseHeadersRead to stream large files without buffering in memory
+                        var fileResponse = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                        fileResponse.EnsureSuccessStatusCode();
+
+                        var localFilePath = Path.Combine(localFolderPath, fileName);
+                        using (var outputStream = File.Create(localFilePath))
+                        using (var fileStream = await fileResponse.Content.ReadAsStreamAsync())
+                        {
+                            await fileStream.CopyToAsync(outputStream);
+                        }
+
+                        downloadedCount[0]++;
+                        downloadedBytes[0] += fileSize;
+
+                        // Update progress percentage and status
+                        if (totalFiles > 0)
+                            progress.Percentage = (double)downloadedCount[0] / totalFiles * 100;
+
+                        var elapsed = DateTime.Now - startTime;
+                        var eta = downloadedCount[0] > 0 && downloadedCount[0] < totalFiles
+                            ? TimeSpan.FromSeconds(elapsed.TotalSeconds / downloadedCount[0] * (totalFiles - downloadedCount[0]))
+                            : TimeSpan.Zero;
+
+                        progress.CurrentOperation = $"{downloadedCount[0]} / {totalFiles} files ({FormatBytes(downloadedBytes[0])} / {FormatBytes(totalSize)}) | ETA: {eta:hh\\:mm\\:ss}";
+
+                        progress.LogEntries.Add(new LogEntry
+                        {
+                            Timestamp = DateTime.Now,
+                            Level = LogLevel.SUCCESS,
+                            Message = $"[{downloadedCount[0]}/{totalFiles}] Downloaded: {fileName}{sizeText}"
+                        });
                     }
-                    else if (item.File != null)
+                    catch (Exception ex)
                     {
-                        // It's a file - download it
-                        var localFilePath = Path.Combine(localFolderPath, item.Name);
+                        downloadedCount[0]++;
+                        if (totalFiles > 0)
+                            progress.Percentage = (double)downloadedCount[0] / totalFiles * 100;
 
-                        try
+                        progress.LogEntries.Add(new LogEntry
                         {
-                            var fileStream = await graphClient.Drives[driveId].Items[item.Id].Content.GetAsync();
+                            Timestamp = DateTime.Now,
+                            Level = LogLevel.ERROR,
+                            Message = $"[{downloadedCount[0]}/{totalFiles}] Failed to download {fileName}: {ex.Message}"
+                        });
+                    }
+                }
 
-                            if (fileStream != null)
-                            {
-                                using (var outputStream = System.IO.File.Create(localFilePath))
-                                {
-                                    await fileStream.CopyToAsync(outputStream);
-                                }
+                // Get subfolders
+                var foldersUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Folders?$select=Name,ServerRelativeUrl";
+                var foldersResponse = await client.GetAsync(foldersUrl);
 
-                                progress.LogEntries.Add(new LogEntry
-                                {
-                                    Timestamp = DateTime.Now,
-                                    Level = LogLevel.SUCCESS,
-                                    Message = $"✅ Downloaded: {item.Name}"
-                                });
-                            }
-                        }
-                        catch (Exception ex)
+                if (foldersResponse.IsSuccessStatusCode)
+                {
+                    var foldersJson = JsonDocument.Parse(await foldersResponse.Content.ReadAsStringAsync());
+
+                    foreach (var folder in foldersJson.RootElement.GetProperty("value").EnumerateArray())
+                    {
+                        var folderName = folder.GetProperty("Name").GetString()!;
+
+                        // Skip SharePoint system folders
+                        if (folderName == "Forms" || folderName.StartsWith("_"))
+                            continue;
+
+                        var subFolderServerRelativeUrl = folder.GetProperty("ServerRelativeUrl").GetString()!;
+                        var localSubFolder = Path.Combine(localFolderPath, folderName);
+                        Directory.CreateDirectory(localSubFolder);
+
+                        progress.LogEntries.Add(new LogEntry
                         {
-                            progress.LogEntries.Add(new LogEntry
-                            {
-                                Timestamp = DateTime.Now,
-                                Level = LogLevel.ERROR,
-                                Message = $"❌ Failed to download {item.Name}: {ex.Message}"
-                            });
-                        }
+                            Timestamp = DateTime.Now,
+                            Level = LogLevel.INFO,
+                            Message = $"Processing folder: {folderName}"
+                        });
+
+                        await DownloadFolderRecursiveAsync(client, siteUrl, subFolderServerRelativeUrl, localSubFolder, progress,
+                            totalFiles, totalSize, downloadedCount, downloadedBytes, startTime);
                     }
                 }
             }
@@ -515,69 +516,105 @@ namespace FileSyncPro.Services
         }
 
         /// <summary>
-        /// Validate SharePoint destination using Microsoft Graph.
+        /// Upload files to SharePoint using SharePoint REST API.
+        /// </summary>
+        public async Task SyncAsync(string sourcePath, DestinationConfig config, SyncProgress progress)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath))
+            {
+                progress.LogEntries.Add(new LogEntry
+                {
+                    Timestamp = DateTime.Now,
+                    Level = LogLevel.ERROR,
+                    Message = "Invalid source path for SharePoint sync."
+                });
+                return;
+            }
+
+            var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
+            var client = await GetAuthenticatedClientAsync(hostname);
+            var siteUrl = $"https://{hostname}/{sitePath}";
+            var targetFolder = BuildServerRelativeUrl(sitePath, libraryName, folderPath);
+
+            var files = Directory.GetFiles(sourcePath, "*.*", SearchOption.AllDirectories);
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var relativePath = Path.GetRelativePath(sourcePath, file).Replace('\\', '/');
+                    var fileName = Path.GetFileName(file);
+                    var uploadFolder = targetFolder;
+
+                    var relativeDir = Path.GetDirectoryName(relativePath)?.Replace('\\', '/');
+                    if (!string.IsNullOrWhiteSpace(relativeDir))
+                        uploadFolder = $"{targetFolder}/{relativeDir}";
+
+                    var encodedFolder = EncodeSharePointPath(uploadFolder);
+                    var encodedFileName = Uri.EscapeDataString(fileName);
+                    var uploadUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedFolder}')/Files/add(url='{encodedFileName}',overwrite=true)";
+
+                    using var fileStream = File.OpenRead(file);
+                    using var content = new StreamContent(fileStream);
+                    content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+                    var response = await client.PostAsync(uploadUrl, content);
+                    response.EnsureSuccessStatusCode();
+
+                    long fileSize = new FileInfo(file).Length;
+                    progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.SUCCESS,
+                        Message = $"Uploaded: {relativePath} ({FileHelper.FormatBytes(fileSize)})"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.ERROR,
+                        Message = $"Failed to upload {Path.GetFileName(file)}: {ex.Message}"
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validate SharePoint connection using SharePoint REST API.
         /// </summary>
         public async Task<SyncResult> ValidateAsync(DestinationConfig config)
         {
             try
             {
-                var graphClient = await GetGraphClientAsync();
+                var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
+                var client = await GetAuthenticatedClientAsync(hostname);
+                var siteUrl = $"https://{hostname}/{sitePath}";
 
-                // Parse SharePoint URL
-                var (hostname, sitePath, parsedLibraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
+                var response = await client.GetAsync($"{siteUrl}/_api/web?$select=Title,Url");
+                response.EnsureSuccessStatusCode();
 
-                // Get the site ID using the correct format
-                string siteAddress;
-                if (string.IsNullOrWhiteSpace(sitePath))
-                {
-                    siteAddress = $"{hostname}:/";
-                }
-                else
-                {
-                    siteAddress = $"{hostname}:/{sitePath}";
-                }
+                var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var siteTitle = json.RootElement.GetProperty("Title").GetString();
 
-                // Try to access the site
-                var site = await graphClient.Sites[siteAddress].GetAsync();
-
-                if (site == null)
-                {
-                    return new SyncResult
-                    {
-                        IsSuccess = false,
-                        Message = "❌ Could not access SharePoint site."
-                    };
-                }
-
-                // Build success message with details
-                var message = $"✅ Connected successfully to: {site.DisplayName ?? "SharePoint Site"}\nSite: {siteAddress}";
-                if (!string.IsNullOrWhiteSpace(parsedLibraryName))
-                {
-                    message += $"\nLibrary: {parsedLibraryName}";
-                }
+                var message = $"Connected to: {siteTitle}\nSite: {siteUrl}";
+                if (!string.IsNullOrWhiteSpace(libraryName))
+                    message += $"\nLibrary: {libraryName}";
                 if (!string.IsNullOrWhiteSpace(folderPath))
-                {
                     message += $"\nFolder: {folderPath}";
-                }
 
-                return new SyncResult
-                {
-                    IsSuccess = true,
-                    Message = message
-                };
+                return new SyncResult { IsSuccess = true, Message = message };
             }
             catch (Exception ex)
             {
-                var (hostname, sitePath, parsedLibraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
-                var siteAddress = string.IsNullOrWhiteSpace(sitePath) ? $"{hostname}:/" : $"{hostname}:/{sitePath}";
+                var (hostname, sitePath, _, _) = ParseSharePointUrl(config.SharePointUrl);
 
                 return new SyncResult
                 {
                     IsSuccess = false,
-                    Message = $"❌ Failed to connect to SharePoint.\n" +
-                              $"Parsed site: {siteAddress}\n" +
-                              $"Library: {parsedLibraryName ?? "Not specified"}\n" +
-                              $"Folder: {folderPath ?? "Root"}\n" +
+                    Message = $"Failed to connect to SharePoint.\n" +
+                              $"Site: https://{hostname}/{sitePath}\n" +
                               $"Error: {ex.Message}"
                 };
             }

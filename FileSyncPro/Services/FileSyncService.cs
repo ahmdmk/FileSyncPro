@@ -33,17 +33,33 @@ namespace FileSyncPro.Services
                 await LogAsync(operation.Progress, $"Found {zipFiles.Length} ZIP files", LogLevel.INFO);
 
                 long totalSize = 0;
-                int totalFiles = 0;
+                long totalFiles = 0;
                 int processedFiles = 0;
 
                 foreach (var zipFile in zipFiles)
                 {
                     using var archive = ZipFile.OpenRead(zipFile);
                     totalFiles += archive.Entries.Count;
-                    totalSize += archive.Entries.Sum(entry => entry.Length);
+
+                    long currentZipSize = 0;
+                    foreach (var entry in archive.Entries)
+                    {
+                        if (entry.Length < 0) 
+                            continue;
+
+                        if (long.MaxValue - currentZipSize < entry.Length)
+                            throw new OverflowException("Zip archive total size exceeds Int64 limit");
+
+                        currentZipSize += entry.Length;
+                    }
+
+                    if (long.MaxValue - totalSize < currentZipSize)
+                        throw new OverflowException("Cumulative ZIP total size exceeds Int64 limit");
+
+                    totalSize += currentZipSize;
 
                     await LogAsync(operation.Progress, 
-                        $"{Path.GetFileName(zipFile)}: {archive.Entries.Count} files, {FileHelper.FormatBytes(archive.Entries.Sum(entry => entry.Length))}", 
+                        $"{Path.GetFileName(zipFile)}: {archive.Entries.Count} files, {FileHelper.FormatBytes(currentZipSize)}", 
                         LogLevel.DEBUG);
                     processedFiles++;
                     progress.Report(new ProgressReport { Percentage = (double)processedFiles / zipFiles.Length * 100 });
@@ -55,7 +71,7 @@ namespace FileSyncPro.Services
             }
             catch (Exception ex)
             {
-                await LogAsync(operation.Progress, $"Analysis failed: {ex.Message}", LogLevel.ERROR);
+                await LogAsync(operation.Progress, $"Analysis failed: {ex.Message}\n{ex}", LogLevel.ERROR);
                 Logger.Error("File analysis failed", ex);
             }
             finally
@@ -68,6 +84,8 @@ namespace FileSyncPro.Services
 
         public async Task SyncFilesAsync(FileSyncOperation operation, IProgress<ProgressReport> progress)
         {
+            bool syncSuccess = false;
+
             try
             {
                 operation.Progress.IsRunning = true;
@@ -83,6 +101,50 @@ namespace FileSyncPro.Services
                         operation.Progress);
 
                     await LogAsync(operation.Progress, "Synchronization completed successfully!", LogLevel.SUCCESS);
+                    syncSuccess = true;
+                    return;
+                }
+
+                // Handle SFTP source
+                if (operation.SourceType == SourceType.SFTP)
+                {
+                    // Use temp directory on destination drive if destination is local, otherwise system temp
+                    string tempBasePath = operation.DestinationType == DestinationType.Local ? operation.DestinationConfig.LocalPath : Path.GetTempPath();
+                    var tempSftpPath = Path.Combine(tempBasePath, $"FileSyncPro_SFTP_{Guid.NewGuid()}");
+                    try
+                    {
+                        await LogAsync(operation.Progress, "Downloading files from SFTP source...", LogLevel.INFO);
+
+                        // When destination is Local, use the selected local destination path for space checks.
+                        var destinationPathForSpaceCheck = operation.DestinationType == DestinationType.Local ? operation.DestinationConfig.LocalPath : null;
+                        await _sftpSyncService.DownloadFromSFTPAsync(operation.SourceConfig, tempSftpPath, destinationPathForSpaceCheck, operation.Progress);
+
+                        progress.Report(new ProgressReport { CurrentOperation = "Syncing to destination...", Percentage = 50 });
+
+                        switch (operation.DestinationType)
+                        {
+                            case DestinationType.Local:
+                                await _localSyncService.SyncAsync(tempSftpPath, operation.DestinationConfig, operation.Progress);
+                                break;
+                            case DestinationType.SharePoint:
+                                await _sharePointSyncService.SyncAsync(tempSftpPath, operation.DestinationConfig, operation.Progress);
+                                break;
+                            case DestinationType.SFTP:
+                                await _sftpSyncService.SyncAsync(tempSftpPath, operation.DestinationConfig, operation.Progress);
+                                break;
+                        }
+
+                        await LogAsync(operation.Progress, "Synchronization completed successfully!", LogLevel.SUCCESS);
+                        syncSuccess = true;
+                    }
+                    finally
+                    {
+                        if (Directory.Exists(tempSftpPath))
+                        {
+                            Directory.Delete(tempSftpPath, true);
+                            await LogAsync(operation.Progress, "Cleaned up temporary files", LogLevel.DEBUG);
+                        }
+                    }
                     return;
                 }
 
@@ -150,6 +212,7 @@ namespace FileSyncPro.Services
                     }
 
                     await LogAsync(operation.Progress, "Synchronization completed successfully!", LogLevel.SUCCESS);
+                    syncSuccess = true;
                 }
                 finally
                 {
@@ -163,14 +226,22 @@ namespace FileSyncPro.Services
             }
             catch (Exception ex)
             {
-                await LogAsync(operation.Progress, $"Synchronization failed: {ex.Message}", LogLevel.ERROR);
+                await LogAsync(operation.Progress, $"Synchronization failed: {ex.Message}\n{ex}", LogLevel.ERROR);
                 Logger.Error("Synchronization failed", ex);
             }
             finally
             {
                 operation.Progress.IsRunning = false;
-                progress.Report(new ProgressReport { CurrentOperation = "Synchronization completed", Percentage = 100 });
-                MessageBox.Show("Synchronization completed!", "FileSyncPro", MessageBoxButton.OK, MessageBoxImage.Information);
+                progress.Report(new ProgressReport { CurrentOperation = syncSuccess ? "Synchronization completed" : "Synchronization failed", Percentage = 100 });
+
+                if (syncSuccess)
+                {
+                    MessageBox.Show("Synchronization completed successfully!", "FileSyncPro", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show("Synchronization failed. Please check logs.", "FileSyncPro", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 

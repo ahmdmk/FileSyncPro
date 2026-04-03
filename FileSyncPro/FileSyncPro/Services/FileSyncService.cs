@@ -86,6 +86,43 @@ namespace FileSyncPro.Services
                     return;
                 }
 
+                // Handle SFTP source
+                if (operation.SourceType == SourceType.SFTP)
+                {
+                    var tempSftpPath = Path.Combine(Path.GetTempPath(), $"FileSyncPro_SFTP_{Guid.NewGuid()}");
+                    try
+                    {
+                        await LogAsync(operation.Progress, "Downloading files from SFTP source...", LogLevel.INFO);
+                        await _sftpSyncService.DownloadFromSFTPAsync(operation.SourceConfig, tempSftpPath, operation.Progress);
+
+                        progress.Report(new ProgressReport { CurrentOperation = "Syncing to destination...", Percentage = 50 });
+
+                        switch (operation.DestinationType)
+                        {
+                            case DestinationType.Local:
+                                await _localSyncService.SyncAsync(tempSftpPath, operation.DestinationConfig, operation.Progress);
+                                break;
+                            case DestinationType.SharePoint:
+                                await _sharePointSyncService.SyncAsync(tempSftpPath, operation.DestinationConfig, operation.Progress);
+                                break;
+                            case DestinationType.SFTP:
+                                await _sftpSyncService.SyncAsync(tempSftpPath, operation.DestinationConfig, operation.Progress);
+                                break;
+                        }
+
+                        await LogAsync(operation.Progress, "Synchronization completed successfully!", LogLevel.SUCCESS);
+                    }
+                    finally
+                    {
+                        if (Directory.Exists(tempSftpPath))
+                        {
+                            Directory.Delete(tempSftpPath, true);
+                            await LogAsync(operation.Progress, "Cleaned up temporary files", LogLevel.DEBUG);
+                        }
+                    }
+                    return;
+                }
+
                 var zipFiles = Directory.GetFiles(operation.SourcePath, "*.zip");
                 var tempExtractPath = Path.Combine(Path.GetTempPath(), $"FileSyncPro_{Guid.NewGuid()}");
                 bool useTempDirectory = zipFiles.Length > 0;

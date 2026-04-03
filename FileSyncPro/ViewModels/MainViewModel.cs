@@ -20,6 +20,21 @@ namespace FileSyncPro.ViewModels
         private string _currentUserName = string.Empty;
         private string _currentDate = string.Empty;
 
+        private bool _rememberSourceSftpCredentials;
+        private bool _rememberDestinationSftpCredentials;
+
+        public bool RememberSourceSftpCredentials
+        {
+            get => _rememberSourceSftpCredentials;
+            set => SetProperty(ref _rememberSourceSftpCredentials, value);
+        }
+
+        public bool RememberDestinationSftpCredentials
+        {
+            get => _rememberDestinationSftpCredentials;
+            set => SetProperty(ref _rememberDestinationSftpCredentials, value);
+        }
+
         public MainViewModel()
         {
             // Check domain access first
@@ -34,7 +49,11 @@ namespace FileSyncPro.ViewModels
             _fileSyncService = new FileSyncService();
             Progress = new SyncProgress();
             DestinationConfig = new DestinationConfig();
-            SourceConfig = new DestinationConfig();
+            SourceConfig = new DestinationConfig
+            {
+                SFTPHost = "saeunprdftp01.blob.core.windows.net",
+                SFTPPort = 22
+            };
 
             // Listen for changes in SourceConfig SharePointUrl
             SourceConfig.PropertyChanged += (s, e) =>
@@ -51,9 +70,13 @@ namespace FileSyncPro.ViewModels
             ProcessCommand = new AsyncRelayCommand(ProcessFilesAsync, CanExecuteOperationAsync);
             BrowseSourceCommand = new RelayCommand(BrowseSource);
             BrowseLocalCommand = new RelayCommand(BrowseLocal);
+            BrowseSFTPSourceCommand = new RelayCommand(BrowseSFTPSource);
             ClearLogCommand = new RelayCommand(ClearLog);
             ExportLogCommand = new RelayCommand(ExportLog);
+            EmailLogCommand = new RelayCommand(EmailLog);
             ResetCommand = new RelayCommand(Reset);
+
+            LoadSftpCredentials();
 
             Progress.PropertyChanged += (s, e) =>
             {
@@ -118,6 +141,51 @@ namespace FileSyncPro.ViewModels
             }
         }
 
+        private void LoadSftpCredentials()
+        {
+            var saved = FileHelper.LoadSftpCredentials();
+            if (saved == null)
+                return;
+
+            RememberSourceSftpCredentials = saved.RememberSource;
+            RememberDestinationSftpCredentials = saved.RememberDestination;
+
+            if (saved.RememberSource)
+            {
+                SourceConfig.SFTPHost = saved.SourceHost;
+                SourceConfig.SFTPPort = saved.SourcePort;
+                SourceConfig.SFTPUser = saved.SourceUser;
+                SourceConfig.SFTPPassword = saved.SourcePassword;
+            }
+
+            if (saved.RememberDestination)
+            {
+                DestinationConfig.SFTPHost = saved.DestinationHost;
+                DestinationConfig.SFTPPort = saved.DestinationPort;
+                DestinationConfig.SFTPUser = saved.DestinationUser;
+                DestinationConfig.SFTPPassword = saved.DestinationPassword;
+            }
+        }
+
+        private void SaveSftpCredentials()
+        {
+            var saved = new FileHelper.SavedSftpCredentials
+            {
+                RememberSource = RememberSourceSftpCredentials,
+                SourceHost = RememberSourceSftpCredentials ? SourceConfig.SFTPHost : string.Empty,
+                SourcePort = RememberSourceSftpCredentials ? SourceConfig.SFTPPort : 22,
+                SourceUser = RememberSourceSftpCredentials ? SourceConfig.SFTPUser : string.Empty,
+                SourcePassword = RememberSourceSftpCredentials ? SourceConfig.SFTPPassword : string.Empty,
+
+                RememberDestination = RememberDestinationSftpCredentials,
+                DestinationHost = RememberDestinationSftpCredentials ? DestinationConfig.SFTPHost : string.Empty,
+                DestinationPort = RememberDestinationSftpCredentials ? DestinationConfig.SFTPPort : 22,
+                DestinationUser = RememberDestinationSftpCredentials ? DestinationConfig.SFTPUser : string.Empty,
+                DestinationPassword = RememberDestinationSftpCredentials ? DestinationConfig.SFTPPassword : string.Empty,
+            };
+            FileHelper.SaveSftpCredentials(saved);
+        }
+
         public DestinationConfig DestinationConfig { get; }
         public DestinationConfig SourceConfig { get; } = new DestinationConfig();
         public SyncProgress Progress { get; }
@@ -130,6 +198,7 @@ namespace FileSyncPro.ViewModels
                 SetProperty(ref _selectedSourceType, value);
                 OnPropertyChanged(nameof(IsSourceLocal));
                 OnPropertyChanged(nameof(IsSourceSharePoint));
+                OnPropertyChanged(nameof(IsSourceSFTP));
                 OnPropertyChanged(nameof(ZipFilesInfo));
                 OnPropertyChanged(nameof(HasSourceValidationError));
             }
@@ -137,6 +206,7 @@ namespace FileSyncPro.ViewModels
 
         public bool IsSourceLocal => SelectedSourceType == "Local";
         public bool IsSourceSharePoint => SelectedSourceType == "SharePoint";
+        public bool IsSourceSFTP => SelectedSourceType == "SFTP";
 
         public string SelectedDestinationType
         {
@@ -187,8 +257,8 @@ namespace FileSyncPro.ViewModels
         {
             get
             {
-                // If source is SharePoint, no ZIP validation needed
-                if (SelectedSourceType == "SharePoint")
+                // If source is SharePoint or SFTP, no ZIP validation needed
+                if (SelectedSourceType == "SharePoint" || SelectedSourceType == "SFTP")
                     return false;
 
                 // For local source: No error if we have ZIP files
@@ -214,6 +284,14 @@ namespace FileSyncPro.ViewModels
                     if (string.IsNullOrWhiteSpace(SourceConfig.SharePointUrl))
                         return "Please enter SharePoint URL";
                     return "SharePoint source configured";
+                }
+
+                // If source is SFTP, show SFTP connection info
+                if (SelectedSourceType == "SFTP")
+                {
+                    if (string.IsNullOrWhiteSpace(SourceConfig.SFTPHost))
+                        return "Please enter SFTP host";
+                    return $"SFTP source configured: {SourceConfig.SFTPHost}";
                 }
 
                 // For local source
@@ -274,8 +352,10 @@ namespace FileSyncPro.ViewModels
         public ICommand ProcessCommand { get; }
         public ICommand BrowseSourceCommand { get; }
         public ICommand BrowseLocalCommand { get; }
+        public ICommand BrowseSFTPSourceCommand { get; }
         public ICommand ClearLogCommand { get; }
         public ICommand ExportLogCommand { get; }
+        public ICommand EmailLogCommand { get; }
         public ICommand ResetCommand { get; }
 
         // --- Async processing ---
@@ -320,6 +400,7 @@ namespace FileSyncPro.ViewModels
                         Message = validationResult.Message
                     });
 
+                    SaveSftpCredentials();
                     await _fileSyncService.SyncFilesAsync(operation, new Progress<ProgressReport>());
                 }
                 else
@@ -350,6 +431,9 @@ namespace FileSyncPro.ViewModels
             finally
             {
                 IsOperationRunning = false;
+
+                // Auto-email log after sync completes or fails
+                EmailLog();
             }
         }
 
@@ -373,6 +457,19 @@ namespace FileSyncPro.ViewModels
                 {
                     return "The source URL does not appear to be a valid SharePoint URL.";
                 }
+            }
+            else if (SelectedSourceType == "SFTP")
+            {
+                if (string.IsNullOrWhiteSpace(SourceConfig.SFTPHost))
+                    return "Please enter the source SFTP host address.";
+                if (SourceConfig.SFTPPort <= 0 || SourceConfig.SFTPPort > 65535)
+                    return "Please enter a valid source SFTP port number (1-65535).";
+                if (string.IsNullOrWhiteSpace(SourceConfig.SFTPUser))
+                    return "Please enter the source SFTP username.";
+                if (string.IsNullOrWhiteSpace(SourceConfig.SFTPPassword))
+                    return "Please enter the source SFTP password.";
+                if (string.IsNullOrWhiteSpace(SourceConfig.SFTPPath))
+                    return "Please enter the source SFTP remote path.";
             }
             else
             {
@@ -455,8 +552,8 @@ namespace FileSyncPro.ViewModels
 
         private Task<bool> CanExecuteOperationAsync()
         {
-            // If source is SharePoint, allow execution
-            if (SelectedSourceType == "SharePoint")
+            // If source is SharePoint or SFTP, allow execution
+            if (SelectedSourceType == "SharePoint" || SelectedSourceType == "SFTP")
             {
                 return Task.FromResult(!IsOperationRunning);
             }
@@ -474,6 +571,7 @@ namespace FileSyncPro.ViewModels
             {
                 "Local" => SourceType.Local,
                 "SharePoint" => SourceType.SharePoint,
+                "SFTP" => SourceType.SFTP,
                 _ => SourceType.Local
             };
 
@@ -520,6 +618,55 @@ namespace FileSyncPro.ViewModels
             {
                 MessageBox.Show($"Error browsing source folder: {ex.Message}", "FileSyncPro",
                     MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void BrowseSFTPSource()
+        {
+            if (string.IsNullOrWhiteSpace(SourceConfig.SFTPHost) ||
+                string.IsNullOrWhiteSpace(SourceConfig.SFTPUser) ||
+                string.IsNullOrWhiteSpace(SourceConfig.SFTPPassword))
+            {
+                MessageBox.Show("Please fill in SFTP Host, Username, and Password before browsing.",
+                    "SFTP Browse", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+
+                var client = new Renci.SshNet.SftpClient(
+                    SourceConfig.SFTPHost, SourceConfig.SFTPPort,
+                    SourceConfig.SFTPUser, SourceConfig.SFTPPassword);
+                client.Connect();
+
+                System.Windows.Input.Mouse.OverrideCursor = null;
+
+                var browser = new Views.SFTPBrowserWindow(client, SourceConfig.SFTPHost)
+                {
+                    Owner = Application.Current.MainWindow
+                };
+
+                if (browser.ShowDialog() == true)
+                {
+                    SourceConfig.SFTPPath = browser.SelectedPath;
+                    Progress.LogEntries.Add(new LogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Level = LogLevel.INFO,
+                        Message = $"Selected SFTP source path: {browser.SelectedPath}"
+                    });
+                }
+
+                client.Disconnect();
+                client.Dispose();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.Input.Mouse.OverrideCursor = null;
+                MessageBox.Show($"Failed to connect to SFTP server:\n\n{ex.Message}",
+                    "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -601,6 +748,17 @@ namespace FileSyncPro.ViewModels
             }
         }
 
+        private void EmailLog()
+        {
+            // Email sending is disabled per user request. Logs are still available in the UI and can be exported manually.
+            Progress.LogEntries.Add(new LogEntry
+            {
+                Timestamp = DateTime.Now,
+                Level = LogLevel.INFO,
+                Message = "Email log feature is disabled. Use Export Log to save logs locally."
+            });
+        }
+
         private void Reset()
         {
             try
@@ -615,6 +773,11 @@ namespace FileSyncPro.ViewModels
                 SelectedSourceType = "Local";
                 SourcePath = string.Empty;
                 SourceConfig.SharePointUrl = string.Empty;
+                SourceConfig.SFTPHost = "saeunprdftp01.blob.core.windows.net";
+                SourceConfig.SFTPPort = 22;
+                SourceConfig.SFTPUser = string.Empty;
+                SourceConfig.SFTPPassword = string.Empty;
+                SourceConfig.SFTPPath = string.Empty;
 
                 // Reset destination type to Local
                 SelectedDestinationType = "Local";

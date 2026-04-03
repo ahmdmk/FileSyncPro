@@ -1,7 +1,24 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\",
-  "Documents": [],
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|c:\\users\\kunhamad.mk\\source\\repos\\filesyncpro\\filesyncpro\\services\\sharepointsyncservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|solutionrelative:services\\sharepointsyncservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|c:\\users\\kunhamad.mk\\source\\repos\\filesyncpro\\filesyncpro\\services\\sftpsyncservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|solutionrelative:services\\sftpsyncservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|c:\\users\\kunhamad.mk\\source\\repos\\filesyncpro\\filesyncpro\\utilities\\filehelper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|solutionrelative:utilities\\filehelper.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|c:\\users\\kunhamad.mk\\source\\repos\\filesyncpro\\filesyncpro\\utilities\\baseviewmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A21C27D5-94E4-43C4-B526-59152310505F}|FileSyncPro.csproj|solutionrelative:utilities\\baseviewmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
@@ -9,7 +26,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": -1,
+          "SelectedChildIndex": 29,
           "Children": [
             {
               "$type": "Bookmark",
@@ -122,6 +139,55 @@
             {
               "$type": "Bookmark",
               "Name": "ST:137:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "SFTPSyncService.cs",
+              "DocumentMoniker": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Services\\SFTPSyncService.cs",
+              "RelativeDocumentMoniker": "Services\\SFTPSyncService.cs",
+              "ToolTip": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Services\\SFTPSyncService.cs",
+              "RelativeToolTip": "Services\\SFTPSyncService.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-27T10:50:11.602Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "SharePointSyncService.cs",
+              "DocumentMoniker": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Services\\SharePointSyncService.cs",
+              "RelativeDocumentMoniker": "Services\\SharePointSyncService.cs",
+              "ToolTip": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Services\\SharePointSyncService.cs",
+              "RelativeToolTip": "Services\\SharePointSyncService.cs",
+              "ViewState": "AgIAAAgCAAAAAAAAAADwvxECAAACAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-27T10:50:10.759Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "BaseViewModel.cs",
+              "DocumentMoniker": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Utilities\\BaseViewModel.cs",
+              "RelativeDocumentMoniker": "Utilities\\BaseViewModel.cs",
+              "ToolTip": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Utilities\\BaseViewModel.cs",
+              "RelativeToolTip": "Utilities\\BaseViewModel.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-27T10:50:09.007Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "FileHelper.cs",
+              "DocumentMoniker": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Utilities\\FileHelper.cs",
+              "RelativeDocumentMoniker": "Utilities\\FileHelper.cs",
+              "ToolTip": "C:\\Users\\kunhamad.mk\\Source\\Repos\\FileSyncPro\\FileSyncPro\\Utilities\\FileHelper.cs",
+              "RelativeToolTip": "Utilities\\FileHelper.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-27T10:50:07.605Z"
             }
           ]
         }

@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",
-      "Bash(dotnet clean:*)"
+      "Bash(dotnet clean:*)",
+      "Bash(start \"\" \"c:\\\\Users\\\\kunhamad.mk\\\\Source\\\\Repos\\\\FileSyncPro\\\\FileSyncPro\\\\bin\\\\Debug\\\\net6.0-windows\\\\FileSyncPro.exe\")",
+      "Bash(taskkill /IM FileSyncPro.exe /F)",
+      "Bash(powershell -Command \"Stop-Process -Name FileSyncPro -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -Command \"Get-Process | Where-Object { $_.Name -like ''*FileSyncPro*'' } | Stop-Process -Force\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Name ''FileSyncPro'' -Force\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 34240 -Force\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 9840 -Force\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Name ''''FileSyncPro'''' -Force -ErrorAction SilentlyContinue\")",
+      "Bash(start \"\" \"c:/Users/kunhamad.mk/Source/Repos/FileSyncPro/FileSyncPro/bin/Debug/net6.0-windows/FileSyncPro.exe\")",
+      "Bash(ls \"c:/Users/kunhamad.mk/Source/Repos/FileSyncPro/FileSyncPro/bin/Debug/net6.0-windows/Microsoft.Identity.Client\"*)"
     ],
     "deny": [],
     "ask": []

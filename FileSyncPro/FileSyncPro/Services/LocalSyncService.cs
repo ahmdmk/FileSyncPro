@@ -52,13 +52,24 @@ namespace FileSyncPro.Services
                     }
                 }
 
-                var drive = new DriveInfo(Path.GetPathRoot(config.LocalPath)!);
+                // UNC paths (e.g. \\server\share\...) are not supported by DriveInfo
+                var root = Path.GetPathRoot(config.LocalPath)!;
+                if (root.StartsWith(@"\\"))
+                {
+                    return new SyncResult
+                    {
+                        IsSuccess = true,
+                        Message = $"Network destination validated: {config.LocalPath}"
+                    };
+                }
+
+                var drive = new DriveInfo(root);
                 var availableSpace = drive.AvailableFreeSpace;
 
-                return new SyncResult 
-                { 
-                    IsSuccess = true, 
-                    Message = $"Local destination validated. Available space: {FileHelper.FormatBytes(availableSpace)}" 
+                return new SyncResult
+                {
+                    IsSuccess = true,
+                    Message = $"Local destination validated. Available space: {FileHelper.FormatBytes(availableSpace)}"
                 };
             }
             catch (Exception ex)

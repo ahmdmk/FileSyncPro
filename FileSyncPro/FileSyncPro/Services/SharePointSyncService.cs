@@ -20,12 +20,14 @@ namespace FileSyncPro.Services
         /// Get authenticated Graph client using interactive browser authentication.
         /// Works with ANY user who has SharePoint access - no custom Azure app registration required.
         /// </summary>
+        public static void ResetAuth() => _graphClient = null;
+
         private async Task<GraphServiceClient> GetGraphClientAsync()
         {
             if (_graphClient != null)
                 return _graphClient;
 
-            var scopes = new[] { "https://graph.microsoft.com/.default" };
+            var scopes = new[] { "Sites.Read.All", "Files.Read.All", "Files.ReadWrite.All" };
 
             var options = new InteractiveBrowserCredentialOptions
             {
@@ -116,7 +118,10 @@ namespace FileSyncPro.Services
         private (string hostname, string sitePath, string libraryName, string folderPath) ParseSharePointUrl(string fullUrl)
         {
             var uri = new Uri(fullUrl);
+            // Strip MCAS proxy suffix (.mcas.ms) to get the real SharePoint hostname
             var hostname = uri.Host;
+            if (hostname.EndsWith(".mcas.ms", StringComparison.OrdinalIgnoreCase))
+                hostname = hostname.Substring(0, hostname.Length - ".mcas.ms".Length);
             var path = uri.AbsolutePath.TrimStart('/');
             string libraryName = "";
             string folderPath = "";

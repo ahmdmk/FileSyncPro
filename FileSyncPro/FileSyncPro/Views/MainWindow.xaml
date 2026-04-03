@@ -272,6 +272,7 @@
                                   Margin="0,0,0,15">
                             <ComboBoxItem Content="Local" IsSelected="True"/>
                             <ComboBoxItem Content="SharePoint"/>
+                            <ComboBoxItem Content="SFTP"/>
                         </ComboBox>
 
                         <!-- Local Source Configuration -->
@@ -314,6 +315,58 @@
                                      Height="38"
                                      ToolTip="Example: https://yourcompany.sharepoint.com/sites/yoursite/Shared Documents/Folder"/>
                         </StackPanel>
+
+                        <!-- SFTP Source Configuration -->
+                        <Grid Visibility="{Binding IsSourceSFTP, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Row 0: Host & Port -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="Host *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPHost, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="Port *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPPort, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"/>
+                            </StackPanel>
+
+                            <!-- Row 1: Username & Password -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="Username *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPUser, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="Password *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <PasswordBox x:Name="txtSourceSFTPPassword"
+                                             local:PasswordHelper.Attach="True"
+                                             local:PasswordHelper.Password="{Binding SourceConfig.SFTPPassword, Mode=TwoWay}"
+                                             Height="38"
+                                             Padding="10,8"
+                                             BorderBrush="#D1D5DB"
+                                             BorderThickness="1"/>
+                            </StackPanel>
+
+                            <!-- Row 2: Remote Path -->
+                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,10">
+                                <TextBlock Text="Remote Path *" FontWeight="SemiBold" Foreground="#374151" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding SourceConfig.SFTPPath, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource ModernTextBox}" Height="38"
+                                         ToolTip="Example: /data/files"/>
+                            </StackPanel>
+                        </Grid>
 
                         <!-- Validation Messages -->
                         <StackPanel Margin="0,10,0,0">

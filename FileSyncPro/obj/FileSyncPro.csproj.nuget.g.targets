@@ -4,5 +4,6 @@
     <Import Project="$(NuGetPackageRoot)system.text.json\8.0.6\buildTransitive\net6.0\System.Text.Json.targets" Condition="Exists('$(NuGetPackageRoot)system.text.json\8.0.6\buildTransitive\net6.0\System.Text.Json.targets')" />
     <Import Project="$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\8.0.3\buildTransitive\net6.0\Microsoft.Extensions.Logging.Abstractions.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\8.0.3\buildTransitive\net6.0\Microsoft.Extensions.Logging.Abstractions.targets')" />
     <Import Project="$(NuGetPackageRoot)microsoft.bcl.memory\9.0.0\buildTransitive\netcoreapp2.0\Microsoft.Bcl.Memory.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.bcl.memory\9.0.0\buildTransitive\netcoreapp2.0\Microsoft.Bcl.Memory.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.identity.client.nativeinterop\0.20.4\buildtransitive\netstandard2.0\Microsoft.Identity.Client.NativeInterop.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.identity.client.nativeinterop\0.20.4\buildtransitive\netstandard2.0\Microsoft.Identity.Client.NativeInterop.targets')" />
   </ImportGroup>
 </Project>

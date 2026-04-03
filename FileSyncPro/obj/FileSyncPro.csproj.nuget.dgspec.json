@@ -62,6 +62,10 @@
               "target": "Package",
               "version": "[5.95.0, )"
             },
+            "Microsoft.Identity.Client.Broker": {
+              "target": "Package",
+              "version": "[4.83.3, )"
+            },
             "Microsoft.SharePointOnline.CSOM": {
               "target": "Package",
               "version": "[16.1.24322.12000, )"
