@@ -8,6 +8,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -86,13 +87,30 @@ namespace FileSyncPro.Services
             return _httpClient;
         }
 
-        private static string FormatBytes(long bytes)
+        // Access tokens expire after ~1 hour. A long-running sync outlives the token, after
+        // which every request returns 401 Unauthorized. This silently re-acquires a fresh
+        // token (MSAL uses its cached refresh token — no UI) and updates the shared client's
+        // Authorization header in place. Returns false if a silent refresh isn't possible.
+        private async Task<bool> TryRefreshTokenAsync()
         {
-            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
-            int order = 0;
-            double size = bytes;
-            while (size >= 1024 && order < sizes.Length - 1) { order++; size /= 1024; }
-            return $"{size:0.##} {sizes[order]}";
+            try
+            {
+                if (_msalApp == null || _httpClient == null || _cachedHostname == null)
+                    return false;
+
+                var scopes = new[] { $"https://{_cachedHostname}/AllSites.Read" };
+                var accounts = await _msalApp.GetAccountsAsync();
+                var result = await _msalApp.AcquireTokenSilent(scopes, accounts.FirstOrDefault())
+                    .ExecuteAsync();
+
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", result.AccessToken);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -189,6 +207,141 @@ namespace FileSyncPro.Services
             return url.TrimEnd('/');
         }
 
+        // Extract the library root server-relative URL from any path within it.
+        // e.g. /sites/AP_DCC/Shared Documents/Folder/Sub → /sites/AP_DCC/Shared Documents
+        private string ExtractLibraryRootUrl(string serverRelativePath)
+        {
+            var parts = serverRelativePath.TrimStart('/').Split('/');
+            int libraryIndex = parts[0].Equals("sites", StringComparison.OrdinalIgnoreCase) ? 2 : 0;
+            if (parts.Length > libraryIndex)
+                return "/" + string.Join("/", parts.Take(libraryIndex + 1));
+            return "/" + string.Join("/", parts);
+        }
+
+        // Enumerate the DIRECT children (files + subfolders) of one folder.
+        //
+        // We use RenderListDataAsStream — the same endpoint the SharePoint web UI uses to
+        // browse large libraries — instead of any of these throttling alternatives:
+        //   * GetList('…')/items?$filter=FileDirRef eq '…'  → filters a non-indexed column,
+        //     trips the list view threshold once the LIBRARY exceeds 5,000 items.
+        //   * GetFolderByServerRelativeUrl('…')/Files        → trips the threshold once a
+        //     SINGLE FOLDER exceeds 5,000 items (its paging is not index-backed).
+        //
+        // RenderListDataAsStream is immune because the CAML view below:
+        //   * scopes to the folder via FolderServerRelativeUrl (only direct children),
+        //   * orders by ID, which is ALWAYS indexed, and
+        //   * pages with <RowLimit Paged='TRUE'>, following NextHref each round.
+        // This bypasses the threshold even for folders holding tens of thousands of items.
+        private async Task<List<Dictionary<string, string>>> RenderFolderRowsAsync(
+            HttpClient client, string siteUrl, string libraryRootUrl, string folderServerRelativeUrl)
+        {
+            var rows = new List<Dictionary<string, string>>();
+            var encodedListUrl = EncodeSharePointPath(libraryRootUrl);
+            var baseUrl = $"{siteUrl}/_api/web/GetList('{encodedListUrl}')/RenderListDataAsStream";
+            const string viewXml =
+                "<View><Query><OrderBy><FieldRef Name='ID' Ascending='TRUE'/></OrderBy></Query>" +
+                "<ViewFields><FieldRef Name='FileLeafRef'/><FieldRef Name='FileRef'/>" +
+                "<FieldRef Name='FSObjType'/><FieldRef Name='File_x0020_Size'/></ViewFields>" +
+                "<RowLimit Paged='TRUE'>5000</RowLimit></View>";
+
+            string? nextHref = null;
+            do
+            {
+                // RenderOptions 2 = ListData (returns Row[] and NextHref for paging).
+                var payload = new
+                {
+                    parameters = new
+                    {
+                        RenderOptions = 2,
+                        ViewXml = viewXml,
+                        FolderServerRelativeUrl = folderServerRelativeUrl
+                    }
+                };
+                var url = baseUrl + (nextHref ?? "");
+                var body = JsonSerializer.Serialize(payload);
+
+                HttpResponseMessage response;
+                bool refreshed = false;
+                while (true)
+                {
+                    // Fresh content each attempt — a StringContent can only be sent once.
+                    using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+                    response = await client.PostAsync(url, content);
+                    // On token expiry, refresh once and retry the same request.
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                        && !refreshed && await TryRefreshTokenAsync())
+                    {
+                        refreshed = true;
+                        response.Dispose();
+                        continue;
+                    }
+                    break;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    response.Dispose();
+                    throw new Exception($"Failed to list files ({response.StatusCode}): {error}");
+                }
+
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+                if (root.TryGetProperty("Row", out var rowArr) && rowArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in rowArr.EnumerateArray())
+                    {
+                        var dict = new Dictionary<string, string>();
+                        foreach (var prop in item.EnumerateObject())
+                        {
+                            if (prop.Value.ValueKind == JsonValueKind.String)
+                                dict[prop.Name] = prop.Value.GetString() ?? "";
+                        }
+                        rows.Add(dict);
+                    }
+                }
+                nextHref = root.TryGetProperty("NextHref", out var nh) && nh.ValueKind == JsonValueKind.String
+                    ? nh.GetString() : null;
+            } while (!string.IsNullOrEmpty(nextHref));
+
+            return rows;
+        }
+
+        // List files directly inside a folder. FSObjType "0" = file.
+        private async Task<List<(string Name, string ServerRelativeUrl, long Size)>> ListFilesInFolderAsync(
+            HttpClient client, string siteUrl, string libraryRootUrl, string folderServerRelativeUrl)
+        {
+            var results = new List<(string Name, string ServerRelativeUrl, long Size)>();
+            foreach (var row in await RenderFolderRowsAsync(client, siteUrl, libraryRootUrl, folderServerRelativeUrl))
+            {
+                if (!row.TryGetValue("FSObjType", out var type) || type != "0") continue;
+                var name = row.TryGetValue("FileLeafRef", out var n) ? n : "";
+                var url = row.TryGetValue("FileRef", out var u) ? u : "";
+                long size = 0;
+                if (row.TryGetValue("File_x0020_Size", out var s))
+                    long.TryParse(s, out size);
+                if (!string.IsNullOrEmpty(name))
+                    results.Add((name, url, size));
+            }
+            return results;
+        }
+
+        // List direct subfolders of a folder. FSObjType "1" = folder.
+        private async Task<List<(string Name, string ServerRelativeUrl)>> ListSubfoldersInFolderAsync(
+            HttpClient client, string siteUrl, string libraryRootUrl, string folderServerRelativeUrl)
+        {
+            var results = new List<(string Name, string ServerRelativeUrl)>();
+            foreach (var row in await RenderFolderRowsAsync(client, siteUrl, libraryRootUrl, folderServerRelativeUrl))
+            {
+                if (!row.TryGetValue("FSObjType", out var type) || type != "1") continue;
+                var name = row.TryGetValue("FileLeafRef", out var n) ? n : "";
+                var url = row.TryGetValue("FileRef", out var u) ? u : "";
+                if (!string.IsNullOrEmpty(name) && name != "Forms" && !name.StartsWith("_"))
+                    results.Add((name, url));
+            }
+            return results;
+        }
+
         /// <summary>
         /// Recursively calculate total size and file count of a SharePoint folder.
         /// </summary>
@@ -199,42 +352,21 @@ namespace FileSyncPro.Services
 
             try
             {
-                var encodedPath = EncodeSharePointPath(folderServerRelativeUrl);
+                var libraryRootUrl = ExtractLibraryRootUrl(folderServerRelativeUrl);
 
-                // Get files
-                var filesUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Files?$select=Length";
-                var filesResponse = await client.GetAsync(filesUrl);
-                if (filesResponse.IsSuccessStatusCode)
+                var files = await ListFilesInFolderAsync(client, siteUrl, libraryRootUrl, folderServerRelativeUrl);
+                foreach (var (_, _, size) in files)
                 {
-                    var filesJson = JsonDocument.Parse(await filesResponse.Content.ReadAsStringAsync());
-                    foreach (var file in filesJson.RootElement.GetProperty("value").EnumerateArray())
-                    {
-                        fileCount++;
-                        if (file.TryGetProperty("Length", out var lengthProp))
-                        {
-                            if (long.TryParse(lengthProp.ToString(), out var size))
-                                totalSize += size;
-                        }
-                    }
+                    fileCount++;
+                    totalSize += size;
                 }
 
-                // Get subfolders
-                var foldersUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Folders?$select=Name,ServerRelativeUrl";
-                var foldersResponse = await client.GetAsync(foldersUrl);
-                if (foldersResponse.IsSuccessStatusCode)
+                var subfolders = await ListSubfoldersInFolderAsync(client, siteUrl, libraryRootUrl, folderServerRelativeUrl);
+                foreach (var (_, subFolderUrl) in subfolders)
                 {
-                    var foldersJson = JsonDocument.Parse(await foldersResponse.Content.ReadAsStringAsync());
-                    foreach (var folder in foldersJson.RootElement.GetProperty("value").EnumerateArray())
-                    {
-                        var folderName = folder.GetProperty("Name").GetString()!;
-                        if (folderName == "Forms" || folderName.StartsWith("_"))
-                            continue;
-
-                        var subFolderUrl = folder.GetProperty("ServerRelativeUrl").GetString()!;
-                        var (subSize, subCount) = await GetFolderSizeAsync(client, siteUrl, subFolderUrl);
-                        totalSize += subSize;
-                        fileCount += subCount;
-                    }
+                    var (subSize, subCount) = await GetFolderSizeAsync(client, siteUrl, subFolderUrl);
+                    totalSize += subSize;
+                    fileCount += subCount;
                 }
             }
             catch { /* Ignore errors during size calculation */ }
@@ -245,8 +377,9 @@ namespace FileSyncPro.Services
         /// <summary>
         /// Download files from SharePoint to local destination using SharePoint REST API.
         /// </summary>
-        public async Task DownloadFromSharePointAsync(DestinationConfig config, string localDestinationPath, SyncProgress progress)
+        public async Task<List<FailedSyncItem>> DownloadFromSharePointAsync(DestinationConfig config, string localDestinationPath, SyncProgress progress)
         {
+            var failures = new List<FailedSyncItem>();
             try
             {
                 var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
@@ -257,30 +390,15 @@ namespace FileSyncPro.Services
                 if (!Directory.Exists(localDestinationPath))
                     Directory.CreateDirectory(localDestinationPath);
 
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.INFO,
-                    Message = $"Downloading from: {serverRelativePath}"
-                });
+                await LogAsync(progress, $"Downloading from: {serverRelativePath}", LogLevel.INFO);
 
                 // Calculate total source size
                 progress.CurrentOperation = "Calculating source size...";
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.INFO,
-                    Message = "Calculating source size..."
-                });
+                await LogAsync(progress, "Calculating source size...", LogLevel.INFO);
 
                 var (totalSize, fileCount) = await GetFolderSizeAsync(client, siteUrl, serverRelativePath);
 
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.INFO,
-                    Message = $"Source: {fileCount} files, Total size: {FormatBytes(totalSize)}"
-                });
+                await LogAsync(progress, $"Source: {fileCount} files, Total size: {FileHelper.FormatBytes(totalSize)}", LogLevel.INFO);
 
                 // Calculate destination size
                 long totalDestinationSize = 0;
@@ -303,53 +421,28 @@ namespace FileSyncPro.Services
                 }
                 catch (Exception ex)
                 {
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.WARNING,
-                        Message = $"Failed to calculate destination size: {ex.Message}"
-                    });
+                    await LogAsync(progress, $"Failed to calculate destination size: {ex.Message}", LogLevel.WARNING);
                 }
 
                 if (destFileCount > 0 || totalDestinationSize > 0)
                 {
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.INFO,
-                        Message = $"Destination: {destFileCount} files, Total size: {FormatBytes(totalDestinationSize)}"
-                    });
+                    await LogAsync(progress, $"Destination: {destFileCount} files, Total size: {FileHelper.FormatBytes(totalDestinationSize)}", LogLevel.INFO);
                 }
 
                 if (FileHelper.TryGetDestinationAvailableSpace(localDestinationPath, out var availableSpace, out var spaceMessage))
                 {
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.INFO,
-                        Message = $"Destination available space: {FormatBytes(availableSpace)}"
-                    });
+                    await LogAsync(progress, $"Destination available space: {FileHelper.FormatBytes(availableSpace)}", LogLevel.INFO);
 
                     if (availableSpace < totalSize)
                     {
-                        var errorMsg = $"Insufficient destination space. Required: {FormatBytes(totalSize)}, Available: {FormatBytes(availableSpace)}.";
-                        progress.LogEntries.Add(new LogEntry
-                        {
-                            Timestamp = DateTime.Now,
-                            Level = LogLevel.ERROR,
-                            Message = errorMsg
-                        });
+                        var errorMsg = $"Insufficient destination space. Required: {FileHelper.FormatBytes(totalSize)}, Available: {FileHelper.FormatBytes(availableSpace)}.";
+                        await LogAsync(progress, errorMsg, LogLevel.ERROR);
                         throw new IOException(errorMsg);
                     }
                 }
                 else
                 {
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.WARNING,
-                        Message = $"Destination free-space check skipped: {spaceMessage}"
-                    });
+                    await LogAsync(progress, $"Destination free-space check skipped: {spaceMessage}", LogLevel.WARNING);
                 }
 
                 progress.Percentage = 0;
@@ -358,77 +451,65 @@ namespace FileSyncPro.Services
                 long[] downloadedBytes = { 0 };
                 var startTime = DateTime.Now;
 
-                await DownloadFolderRecursiveAsync(client, siteUrl, serverRelativePath, localDestinationPath, progress,
+                failures = await DownloadFolderRecursiveAsync(client, siteUrl, serverRelativePath, localDestinationPath, progress,
                     fileCount, totalSize, downloadedCount, downloadedBytes, startTime);
 
                 progress.Percentage = 100;
                 progress.CurrentOperation = "Download complete!";
 
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.SUCCESS,
-                    Message = $"Download completed! {downloadedCount[0]} / {fileCount} files, {FormatBytes(downloadedBytes[0])} / {FormatBytes(totalSize)}, Duration: {(DateTime.Now - startTime):hh\\:mm\\:ss}"
-                });
+                await LogAsync(progress, $"Download completed! {downloadedCount[0]} / {fileCount} files, {FileHelper.FormatBytes(downloadedBytes[0])} / {FileHelper.FormatBytes(totalSize)}, Duration: {(DateTime.Now - startTime):hh\\:mm\\:ss}", LogLevel.SUCCESS);
+                return failures;
             }
             catch (Exception ex)
             {
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.ERROR,
-                    Message = $"Failed to download from SharePoint: {ex.Message}"
-                });
+                await LogAsync(progress, $"Failed to download from SharePoint: {ex.Message}", LogLevel.ERROR);
                 throw;
             }
         }
 
-        private async Task DownloadFolderRecursiveAsync(HttpClient client, string siteUrl, string folderServerRelativeUrl, string localFolderPath, SyncProgress progress,
+        private async Task<List<FailedSyncItem>> DownloadFolderRecursiveAsync(HttpClient client, string siteUrl, string folderServerRelativeUrl, string localFolderPath, SyncProgress progress,
             int totalFiles, long totalSize, int[] downloadedCount, long[] downloadedBytes, DateTime startTime)
         {
+            var failures = new List<FailedSyncItem>();
             try
             {
-                var encodedPath = EncodeSharePointPath(folderServerRelativeUrl);
+                var libraryRootUrl = ExtractLibraryRootUrl(folderServerRelativeUrl);
 
-                // Get files in folder
-                var filesUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Files?$select=Name,ServerRelativeUrl,Length";
-                var filesResponse = await client.GetAsync(filesUrl);
+                var files = await ListFilesInFolderAsync(client, siteUrl, libraryRootUrl, folderServerRelativeUrl);
 
-                if (!filesResponse.IsSuccessStatusCode)
+                foreach (var (fileName, fileServerRelativeUrl, fileSize) in files)
                 {
-                    var error = await filesResponse.Content.ReadAsStringAsync();
-                    throw new Exception($"Failed to list files ({filesResponse.StatusCode}): {error}");
-                }
-
-                var filesJson = JsonDocument.Parse(await filesResponse.Content.ReadAsStringAsync());
-
-                foreach (var file in filesJson.RootElement.GetProperty("value").EnumerateArray())
-                {
-                    var fileName = file.GetProperty("Name").GetString()!;
-                    var fileServerRelativeUrl = file.GetProperty("ServerRelativeUrl").GetString()!;
-                    long fileSize = 0;
-                    if (file.TryGetProperty("Length", out var lengthProp))
-                        long.TryParse(lengthProp.ToString(), out fileSize);
-
+                    var localFilePath = Path.Combine(localFolderPath, fileName);
                     try
                     {
-                        var sizeText = fileSize > 0 ? $" ({FormatBytes(fileSize)})" : "";
-                        progress.CurrentOperation = $"Downloading {downloadedCount[0] + 1} / {totalFiles}: {fileName}";
+                        var sizeText = fileSize > 0 ? $" ({FileHelper.FormatBytes(fileSize)})" : "";
 
-                        progress.LogEntries.Add(new LogEntry
+                        if (File.Exists(localFilePath))
                         {
-                            Timestamp = DateTime.Now,
-                            Level = LogLevel.INFO,
-                            Message = $"[{downloadedCount[0] + 1}/{totalFiles}] Downloading: {fileName}{sizeText}"
-                        });
+                            downloadedCount[0]++;
+                            downloadedBytes[0] += fileSize;
+                            if (totalFiles > 0)
+                                progress.Percentage = (double)downloadedCount[0] / totalFiles * 100;
+                            await LogAsync(progress, $"[{downloadedCount[0]}/{totalFiles}] Skipped (already exists): {fileName}{sizeText}", LogLevel.INFO);
+                            continue;
+                        }
+
+                        progress.CurrentOperation = $"Downloading {downloadedCount[0] + 1} / {totalFiles}: {fileName}";
+                        await LogAsync(progress, $"[{downloadedCount[0] + 1}/{totalFiles}] Downloading: {fileName}{sizeText}", LogLevel.INFO);
 
                         var encodedFileUrl = EncodeSharePointPath(fileServerRelativeUrl);
                         var downloadUrl = $"{siteUrl}/_api/web/GetFileByServerRelativeUrl('{encodedFileUrl}')/$value";
                         // Use ResponseHeadersRead to stream large files without buffering in memory
                         var fileResponse = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                        // Token may have expired mid-sync (~1h lifetime): refresh once and retry.
+                        if (fileResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                            && await TryRefreshTokenAsync())
+                        {
+                            fileResponse.Dispose();
+                            fileResponse = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                        }
                         fileResponse.EnsureSuccessStatusCode();
 
-                        var localFilePath = Path.Combine(localFolderPath, fileName);
                         using (var outputStream = File.Create(localFilePath))
                         using (var fileStream = await fileResponse.Content.ReadAsStreamAsync())
                         {
@@ -437,8 +518,6 @@ namespace FileSyncPro.Services
 
                         downloadedCount[0]++;
                         downloadedBytes[0] += fileSize;
-
-                        // Update progress percentage and status
                         if (totalFiles > 0)
                             progress.Percentage = (double)downloadedCount[0] / totalFiles * 100;
 
@@ -446,89 +525,52 @@ namespace FileSyncPro.Services
                         var eta = downloadedCount[0] > 0 && downloadedCount[0] < totalFiles
                             ? TimeSpan.FromSeconds(elapsed.TotalSeconds / downloadedCount[0] * (totalFiles - downloadedCount[0]))
                             : TimeSpan.Zero;
-
-                        progress.CurrentOperation = $"{downloadedCount[0]} / {totalFiles} files ({FormatBytes(downloadedBytes[0])} / {FormatBytes(totalSize)}) | ETA: {eta:hh\\:mm\\:ss}";
-
-                        progress.LogEntries.Add(new LogEntry
-                        {
-                            Timestamp = DateTime.Now,
-                            Level = LogLevel.SUCCESS,
-                            Message = $"[{downloadedCount[0]}/{totalFiles}] Downloaded: {fileName}{sizeText}"
-                        });
+                        progress.CurrentOperation = $"{downloadedCount[0]} / {totalFiles} files ({FileHelper.FormatBytes(downloadedBytes[0])} / {FileHelper.FormatBytes(totalSize)}) | ETA: {eta:hh\\:mm\\:ss}";
+                        await LogAsync(progress, $"[{downloadedCount[0]}/{totalFiles}] Downloaded: {fileName}{sizeText}", LogLevel.SUCCESS);
                     }
                     catch (Exception ex)
                     {
                         downloadedCount[0]++;
                         if (totalFiles > 0)
                             progress.Percentage = (double)downloadedCount[0] / totalFiles * 100;
-
-                        progress.LogEntries.Add(new LogEntry
+                        await LogAsync(progress, $"[{downloadedCount[0]}/{totalFiles}] Failed to download {fileName}: {ex.Message}", LogLevel.ERROR);
+                        failures.Add(new FailedSyncItem
                         {
-                            Timestamp = DateTime.Now,
-                            Level = LogLevel.ERROR,
-                            Message = $"[{downloadedCount[0]}/{totalFiles}] Failed to download {fileName}: {ex.Message}"
+                            FilePath = localFilePath,
+                            RelativePath = fileServerRelativeUrl,
+                            ErrorMessage = ex.Message
                         });
                     }
                 }
 
-                // Get subfolders
-                var foldersUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedPath}')/Folders?$select=Name,ServerRelativeUrl";
-                var foldersResponse = await client.GetAsync(foldersUrl);
-
-                if (foldersResponse.IsSuccessStatusCode)
+                var subfolders = await ListSubfoldersInFolderAsync(client, siteUrl, libraryRootUrl, folderServerRelativeUrl);
+                foreach (var (folderName, subFolderServerRelativeUrl) in subfolders)
                 {
-                    var foldersJson = JsonDocument.Parse(await foldersResponse.Content.ReadAsStringAsync());
-
-                    foreach (var folder in foldersJson.RootElement.GetProperty("value").EnumerateArray())
-                    {
-                        var folderName = folder.GetProperty("Name").GetString()!;
-
-                        // Skip SharePoint system folders
-                        if (folderName == "Forms" || folderName.StartsWith("_"))
-                            continue;
-
-                        var subFolderServerRelativeUrl = folder.GetProperty("ServerRelativeUrl").GetString()!;
-                        var localSubFolder = Path.Combine(localFolderPath, folderName);
-                        Directory.CreateDirectory(localSubFolder);
-
-                        progress.LogEntries.Add(new LogEntry
-                        {
-                            Timestamp = DateTime.Now,
-                            Level = LogLevel.INFO,
-                            Message = $"Processing folder: {folderName}"
-                        });
-
-                        await DownloadFolderRecursiveAsync(client, siteUrl, subFolderServerRelativeUrl, localSubFolder, progress,
-                            totalFiles, totalSize, downloadedCount, downloadedBytes, startTime);
-                    }
+                    var localSubFolder = Path.Combine(localFolderPath, folderName);
+                    Directory.CreateDirectory(localSubFolder);
+                    await LogAsync(progress, $"Processing folder: {folderName}", LogLevel.INFO);
+                    failures.AddRange(await DownloadFolderRecursiveAsync(client, siteUrl, subFolderServerRelativeUrl, localSubFolder, progress,
+                        totalFiles, totalSize, downloadedCount, downloadedBytes, startTime));
                 }
             }
             catch (Exception ex)
             {
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.ERROR,
-                    Message = $"Error processing folder: {ex.Message}"
-                });
+                await LogAsync(progress, $"Error processing folder: {ex.Message}", LogLevel.ERROR);
                 throw;
             }
+            return failures;
         }
 
         /// <summary>
         /// Upload files to SharePoint using SharePoint REST API.
         /// </summary>
-        public async Task SyncAsync(string sourcePath, DestinationConfig config, SyncProgress progress)
+        public async Task<List<FailedSyncItem>> SyncAsync(string sourcePath, DestinationConfig config, SyncProgress progress)
         {
+            var failures = new List<FailedSyncItem>();
             if (string.IsNullOrWhiteSpace(sourcePath) || !Directory.Exists(sourcePath))
             {
-                progress.LogEntries.Add(new LogEntry
-                {
-                    Timestamp = DateTime.Now,
-                    Level = LogLevel.ERROR,
-                    Message = "Invalid source path for SharePoint sync."
-                });
-                return;
+                await LogAsync(progress, "Invalid source path for SharePoint sync.", LogLevel.ERROR);
+                return failures;
             }
 
             var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
@@ -543,31 +585,7 @@ namespace FileSyncPro.Services
                 try
                 {
                     var relativePath = Path.GetRelativePath(sourcePath, file).Replace('\\', '/');
-                    var fileName = Path.GetFileName(file);
-                    var uploadFolder = targetFolder;
-
-                    var relativeDir = Path.GetDirectoryName(relativePath)?.Replace('\\', '/');
-                    if (!string.IsNullOrWhiteSpace(relativeDir))
-                        uploadFolder = $"{targetFolder}/{relativeDir}";
-
-                    var encodedFolder = EncodeSharePointPath(uploadFolder);
-                    var encodedFileName = Uri.EscapeDataString(fileName);
-                    var uploadUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedFolder}')/Files/add(url='{encodedFileName}',overwrite=true)";
-
-                    using var fileStream = File.OpenRead(file);
-                    using var content = new StreamContent(fileStream);
-                    content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-
-                    var response = await client.PostAsync(uploadUrl, content);
-                    response.EnsureSuccessStatusCode();
-
-                    long fileSize = new FileInfo(file).Length;
-                    progress.LogEntries.Add(new LogEntry
-                    {
-                        Timestamp = DateTime.Now,
-                        Level = LogLevel.SUCCESS,
-                        Message = $"Uploaded: {relativePath} ({FileHelper.FormatBytes(fileSize)})"
-                    });
+                    await UploadFileAsync(config, file, relativePath, progress); // Pass progress for logging
                 }
                 catch (Exception ex)
                 {
@@ -577,8 +595,46 @@ namespace FileSyncPro.Services
                         Level = LogLevel.ERROR,
                         Message = $"Failed to upload {Path.GetFileName(file)}: {ex.Message}"
                     });
+                    failures.Add(new FailedSyncItem
+                    {
+                        FilePath = file,
+                        RelativePath = Path.GetRelativePath(sourcePath, file),
+                        ErrorMessage = ex.Message
+                    });
                 }
             }
+            return failures;
+        }
+
+        public async Task UploadFileAsync(DestinationConfig config, string localFilePath, string relativePath, SyncProgress? progress = null)
+        {
+            var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(config.SharePointUrl);
+            var client = await GetAuthenticatedClientAsync(hostname);
+            var siteUrl = $"https://{hostname}/{sitePath}";
+            var targetFolder = BuildServerRelativeUrl(sitePath, libraryName, folderPath);
+
+            var fileName = Path.GetFileName(localFilePath);
+            var uploadFolder = targetFolder;
+
+            var normalizedRelativePath = relativePath.Replace('\\', '/');
+            var relativeDir = Path.GetDirectoryName(normalizedRelativePath)?.Replace('\\', '/');
+            
+            if (!string.IsNullOrWhiteSpace(relativeDir))
+                uploadFolder = $"{targetFolder}/{relativeDir}";
+
+            var encodedFolder = EncodeSharePointPath(uploadFolder);
+            var encodedFileName = Uri.EscapeDataString(fileName);
+            var uploadUrl = $"{siteUrl}/_api/web/GetFolderByServerRelativeUrl('{encodedFolder}')/Files/add(url='{encodedFileName}',overwrite=true)";
+
+            using var fileStream = File.OpenRead(localFilePath);
+            using var content = new StreamContent(fileStream);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+
+            var response = await client.PostAsync(uploadUrl, content);
+            response.EnsureSuccessStatusCode(); // Throws if not success
+
+            if (progress != null)
+                await LogAsync(progress, $"Uploaded: {relativePath} ({FileHelper.FormatBytes(new FileInfo(localFilePath).Length)})", LogLevel.SUCCESS);
         }
 
         /// <summary>
@@ -618,6 +674,21 @@ namespace FileSyncPro.Services
                               $"Error: {ex.Message}"
                 };
             }
+        }
+
+        private async Task LogAsync(SyncProgress progress, string message, LogLevel level)
+        {
+            var logEntry = new LogEntry
+            {
+                Timestamp = DateTime.Now,
+                Level = level,
+                Message = $"{DateTime.Now:HH:mm:ss} [{level}] {message}"
+            };
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                progress.LogEntries.Add(logEntry);
+            });
         }
     }
 }

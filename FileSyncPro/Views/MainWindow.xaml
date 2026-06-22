@@ -636,12 +636,16 @@
 
                         <!-- Progress Bar -->
                         <Grid Grid.Row="0" Margin="0,0,0,15">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <!-- Full-width status line above the bar so long text is never clipped -->
+                                <TextBlock Text="{Binding Progress.CurrentOperation}"
+                                           FontStyle="Italic"
+                                           Foreground="#6B7280"
+                                           FontSize="12"
+                                           Margin="0,0,0,6"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"/>
 
-                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                 <ProgressBar Height="8"
                                              IsIndeterminate="True"
                                              Visibility="{Binding IsOperationRunning, Converter={StaticResource BoolToVisibility}}"
@@ -686,15 +690,6 @@
                                     </ProgressBar.Resources>
                                 </ProgressBar>
                             </StackPanel>
-
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding Progress.CurrentOperation}"
-                                       VerticalAlignment="Center"
-                                       FontStyle="Italic"
-                                       Foreground="#6B7280"
-                                       FontSize="12"
-                                       MaxWidth="200"
-                                       TextTrimming="CharacterEllipsis"/>
                         </Grid>
 
                         <!-- Log List -->
@@ -703,7 +698,8 @@
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Background="White">
-                            <ListBox ItemsSource="{Binding Progress.LogEntries}"
+                            <ListBox x:Name="LogListBox"
+                                     ItemsSource="{Binding Progress.LogEntries}"
                                      BorderThickness="0"
                                      Background="Transparent"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
